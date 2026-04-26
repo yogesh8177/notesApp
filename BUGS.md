@@ -117,3 +117,13 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Why bad:** All three called lib functions that return `Result<T>` but ignored the return value entirely. No `redirect` or `revalidatePath` call on success, no error handling on failure — so both success and error states were silently swallowed. Invites were actually being created (visible in audit_log) but the page never re-rendered.
 - **Fix:** Added `searchParams` prop, checked result in each action, added `redirect` with `?message=` on success and `?error=` on failure, flash notices rendered at top of page.
 - **Fix commit:** 2f66565 (main)
+
+---
+
+### next@15.1.0 security vulnerabilities flagged by Railway (2026-04-27)
+
+- **What:** Next.js 15.1.0 contains known security vulnerabilities.
+- **Where:** `package.json` — `"next": "15.1.0"`.
+- **Why bad:** Railway deployment pipeline flagged the pinned version as having CVEs. Running a vulnerable version in production exposes the app to potential exploits in the Next.js request handling layer.
+- **Fix:** Upgraded to `next@15.1.11` (patch-only bump, no breaking changes, no API surface change). All pre-existing type errors confirmed unchanged after upgrade.
+- **Fix commit:** 1dc225e (main)
