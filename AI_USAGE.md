@@ -126,3 +126,22 @@
 
 **Reasoning logged:** invite delivery via audit_log (not hidden, configurable email hook); service-role client for org creation (creator has no membership yet); email mismatch shown to user with sign-out option as spec requires.
 
+---
+
+## 2026-04-26 — UI loading states (orchestrator, no sub-agent)
+
+**Trigger:** user reported blank screen during navigation — server components fetch on the server, so during transition there's nothing to render.
+
+**Thinking:** App Router `loading.tsx` is the idiomatic fix; it wraps a segment in a Suspense boundary automatically. The wrinkle was *where* to put them. Per-module `loading.tsx` inside `notes/`, `search/`, `files/` etc. would give tailored skeletons but cross module ownership (orchestrator on `main` editing files owned by module agents — exactly what CLAUDE.md forbids). Surfaced the tradeoff to the user before acting; they confirmed the boundary-respecting option.
+
+**What I added:**
+- `src/components/ui/skeleton.tsx` — shared `Skeleton` primitive in shadcn style.
+- `src/app/loading.tsx` — root fallback for `/`, `/sign-in`, `/orgs`.
+- `src/app/orgs/[orgId]/loading.tsx` — segment-level fallback inherited by every module page (notes, search, files, settings) until a module agent adds a more specific override. `aria-busy` + sr-only label for accessibility.
+
+**Why this was the right scope:** module agents can still drop their own `loading.tsx` for tailored skeletons (e.g. a notes-list-shaped fallback in `notes/loading.tsx`) without conflicting with this baseline file — Next.js resolves the closest `loading.tsx` per segment. So this fix is non-blocking for module work.
+
+**No sub-agent used.** Three small files, well-defined contract, no parallelization benefit. Single direct write.
+
+**Verified:** `npx tsc --noEmit` clean for new files.
+

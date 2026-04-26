@@ -321,3 +321,31 @@ their original blocker conclusions are stale.
 - Replacement: inline digest check (`error.digest.startsWith("NEXT_REDIRECT")`) — version-agnostic, no internal import dependency.
 - Rule going forward: never import from `next/dist/**` — those are internal bundle paths with no stability guarantees.
 
+---
+
+## 2026-04-26 — UI loading states (orchestrator)
+
+### Problem
+
+User flagged: navigation between pages renders blank until the server-component data resolves. Notes list, search, settings, etc. all do server-side data fetching with no fallback — looks frozen.
+
+### Decision: route-level `loading.tsx` at the org segment, not per-module
+
+App Router gives us `loading.tsx` for free — wraps the segment in a Suspense boundary, renders during data fetching, no client wiring needed. Two ways to apply it:
+
+1. Per-module `loading.tsx` inside each module's route folder (`notes/loading.tsx`, `search/loading.tsx`, ...). Tailored fallbacks, but **crosses module ownership** — those paths are owned by the module agents per CLAUDE.md, and the orchestrator dropping files in there is exactly the kind of cross-boundary edit the rails forbid.
+2. One `loading.tsx` at `src/app/orgs/[orgId]/loading.tsx`. The org layout is main-baseline territory (frozen contract). Next.js uses this as the fallback for **every** child segment until a module owner adds a more specific one. Generic skeleton, but no boundary crossing and module owners can override later without conflict.
+
+Picked option 2. Plus a top-level `src/app/loading.tsx` for sign-in/orgs-index navigation.
+
+### Added
+
+- `src/components/ui/skeleton.tsx` — minimal shadcn-style `Skeleton` primitive (animated `bg-muted` div). Lives in shared UI (not module-owned).
+- `src/app/loading.tsx` — root fallback, centered skeleton block.
+- `src/app/orgs/[orgId]/loading.tsx` — three skeleton cards mimicking the notes/search/settings card layouts. `aria-busy` + `aria-live="polite"` + sr-only "Loading…" so it's announced, not silent.
+
+### Verified
+
+- `npx tsc --noEmit` — no new errors from these files (pre-existing errors in `lib/supabase/*`, `orgs/invite.ts`, etc. are unrelated).
+- No module-owned paths touched. Module agents can drop their own `loading.tsx` later for tailored fallbacks; this baseline just removes the blank-screen footgun.
+
