@@ -268,3 +268,16 @@ baseline source files were edited on `main`.
   - writes the selected top-level subset into `accepted_fields`
   - sets `status='accepted'`
   - audits `ai.summary.accept`
+
+### Step 8: verification
+
+- `git diff --check HEAD~6..HEAD` passed with no whitespace or merge-marker issues.
+- `git status --short` is clean after the scoped feature commits.
+- Compiler verification is currently blocked in this worktree:
+  - `npm run typecheck` invoked `tsc --noEmit`
+  - the shell reported `tsc: command not found`
+- Manual review covered:
+  - owned-path boundaries
+  - prompt delimiter isolation
+  - permission checks before note reads and summary acceptance
+  - audit coverage for `request`, `fallback`, `complete`, `fail`, and `accept`
