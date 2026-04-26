@@ -127,3 +127,29 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Why bad:** Railway deployment pipeline flagged the pinned version as having CVEs. Running a vulnerable version in production exposes the app to potential exploits in the Next.js request handling layer.
 - **Fix:** Upgraded to `next@15.1.11` (patch-only bump, no breaking changes, no API surface change). All pre-existing type errors confirmed unchanged after upgrade.
 - **Fix commit:** 1dc225e (main)
+
+---
+
+### Dockerfile COPY fails — missing public/ directory (2026-04-27)
+
+- **What:** Docker build errors at `COPY --from=builder /app/public ./public` in the runner stage.
+- **Where:** `Dockerfile` runner stage, line ~48. `public/` was never created in the repo.
+- **Why bad:** Hard build failure — image cannot be produced, deployment blocked entirely.
+- **Fix:** Created `public/.gitkeep` so the directory exists in the build context.
+- **Fix commit:** 3972bdb (main)
+
+### Invalid [[services]] table in railway.toml (2026-04-27)
+
+- **What:** `[[services]]` array table is not valid Railway TOML for single-service deployments.
+- **Where:** `railway.toml` lines 16-17.
+- **Why bad:** Not a hard blocker but invalid config that Railway silently ignores; confusing and could cause issues on future Railway CLI versions.
+- **Fix:** Removed the block — `[build]` and `[deploy]` are sufficient for a single service.
+- **Fix commit:** 3972bdb (main)
+
+### NEXT_PUBLIC_* vars must be Railway build variables (2026-04-27)
+
+- **What:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL` are baked into the Next.js bundle at build time.
+- **Where:** Railway project settings — Build Variables tab.
+- **Why bad:** If only set as runtime env vars, the client bundle gets `undefined` for all three — Supabase client won't initialise, auth flows break silently.
+- **Fix:** Not a code fix. Must be configured in Railway: Settings → Variables → add each as a Build Variable in addition to (or instead of) a runtime variable. Dockerfile already has the correct `ARG` declarations.
+- **Fix commit:** N/A — operational configuration required.
