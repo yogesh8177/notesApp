@@ -206,6 +206,21 @@ The sandbox blocks writes under `.git`, so worktree creation required
 escalation. That escalation was used only to materialize the git worktrees; no
 baseline source files were edited on `main`.
 
+## 2026-04-26 — files module outcome (`Galileo`, `agent/files`)
+
+### Reasoning summary
+
+- Stayed inside the owned files surfaces only.
+- Kept note-detail attachment UI out of scope because `/notes/[id]` belongs to
+  `notes-core`; surfaced optional note attachment from the org files screen
+  instead.
+- Used signed upload/download flows and permission checks instead of expanding
+  baseline contracts.
+
+### Verification summary
+
+- `git diff --check` passed.
+- Type-checking could not run in this worktree because local `tsc` is missing.
 ---
 
 ## 2026-04-26 — ai-summary implementation resumed

@@ -68,6 +68,14 @@
 - `Leibniz` and `Planck` were resumed with the explicit guide requirements after their first blocker-only pass.
 - `Ampere` and `Harvey` need a follow-up pass against the now-present module guides to confirm alignment or patch owned surfaces.
 
+### 2026-04-26 — files module outcome (`Galileo`, `agent/files`)
+
+- Implemented the files module inside owned paths only.
+- Added signed upload/download flows, org/note permission checks, list/delete,
+  and an org files UI.
+- Left `/notes/[id]` attachment UI untouched because it is outside files
+  ownership.
+
 ## Things we don't trust agents to do (kept on the human side)
 
 - **Approving baseline contract changes** (schema, RLS, auth, logger). If a
