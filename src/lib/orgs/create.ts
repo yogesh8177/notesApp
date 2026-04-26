@@ -5,7 +5,7 @@ import { db } from "@/lib/db/client";
 import { orgs, memberships, users } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { audit } from "@/lib/log/audit";
-import { err, fromZod, ok, toResponse } from "@/lib/validation/result";
+import { err, fromZod, ok } from "@/lib/validation/result";
 import { createOrgSchema, type CreateOrgInput } from "./schemas";
 
 /**
@@ -18,7 +18,7 @@ import { createOrgSchema, type CreateOrgInput } from "./schemas";
 export async function createOrg(input: CreateOrgInput) {
   const user = await requireUser();
   const parsed = createOrgSchema.safeParse(input);
-  if (!parsed.success) return toResponse(fromZod(parsed.error));
+  if (!parsed.success) return fromZod(parsed.error);
 
   const { name, slug } = parsed.data;
 
@@ -28,7 +28,7 @@ export async function createOrg(input: CreateOrgInput) {
     .where(eq(orgs.slug, slug))
     .limit(1);
   if (existing) {
-    return toResponse(err("CONFLICT", `The slug "${slug}" is already taken.`));
+    return err("CONFLICT", `The slug "${slug}" is already taken.`);
   }
 
   const [org] = await db.transaction(async (tx) => {
@@ -69,5 +69,5 @@ export async function createOrg(input: CreateOrgInput) {
     metadata: { name: org.name, slug: org.slug },
   });
 
-  return toResponse(ok({ id: org.id }));
+  return ok({ id: org.id });
 }
