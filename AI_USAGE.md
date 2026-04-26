@@ -79,3 +79,9 @@
 > - Using service-role client from a request handler "to make a query work".
 > - Streaming user note content to an LLM without delimiter separation.
 > - Off-by-one in note version number on concurrent updates.
+
+### 2026-04-26 — Module agent `Leibniz` retry with restored ai-summary guide
+
+- Re-ran after baseline added `CLAUDE.md` and `docs/modules/ai-summary.md`.
+- No sub-agents used; implementation is being done directly in the module worktree to keep ownership tight.
+- First implementation chunk is the structured summary schema in `src/lib/ai/schema.ts`, matching the DB-side contract comment in `src/lib/db/schema/ai.ts`.

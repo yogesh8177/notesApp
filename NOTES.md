@@ -205,3 +205,23 @@ worker is confined to its own branch/worktree pair.
 The sandbox blocks writes under `.git`, so worktree creation required
 escalation. That escalation was used only to materialize the git worktrees; no
 baseline source files were edited on `main`.
+
+---
+
+## 2026-04-26 — ai-summary implementation resumed
+
+### Step 1: contract reload
+
+- Read root `CLAUDE.md` and `docs/modules/ai-summary.md`.
+- Confirmed the local guide now freezes the implementation surface sufficiently:
+  - Anthropic primary, OpenAI fallback
+  - zod structured summary schema
+  - delimiter-isolated prompt
+  - `POST /api/ai/notes/[noteId]/summary`
+  - per-user in-memory rate limit
+  - acceptance flow writing `accepted_fields` and `status='accepted'`
+
+### Step 2: schema decision
+
+- Implemented `src/lib/ai/schema.ts` as the app-side structured contract referenced by the frozen DB schema comments.
+- Chose top-level accepted fields (`tldr`, `keyPoints`, `actionItems`, `entities`) for the acceptance UI. This satisfies the guide's "per-field accept" requirement without inventing nested acceptance semantics that are not frozen anywhere else in baseline.
