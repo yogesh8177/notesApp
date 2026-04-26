@@ -1,0 +1,17 @@
+# Railway deployment config.
+# deploy-ops module agent: tune restart policies, add cron services, configure
+# log shipping to a third-party once Railway env is provisioned.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "node server.js"
+healthcheckPath = "/healthz"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+[[services]]
+name = "web"
