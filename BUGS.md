@@ -71,3 +71,11 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Fix:** Replace the transport with pino-pretty as a synchronous stream (`pino(opts, prettyStream)`) — same output, no worker thread.
 - **Fix commit:** ea2eedd (main)
 
+
+## [notes-core] isRedirectError imported from internal Next.js path — not a function at runtime
+
+- **Where:** `src/app/orgs/[orgId]/notes/actions.ts:5` (notes-core worktree)
+- **Why bad:** `import { isRedirectError } from "next/dist/client/components/redirect"` resolves to `undefined` in Next.js 15 — the function isn't exported from that path. Calling `isRedirectError(error)` throws `TypeError: ... is not a function`, which then gets caught by the outer catch and re-redirects with a false error flash.
+- **Fix:** Inline guard that checks `error.digest.startsWith("NEXT_REDIRECT")` — the stable, version-agnostic signal Next.js uses internally for all redirect throws.
+- **Fix commit:** db1b195 (agent/notes-core)
+
