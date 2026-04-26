@@ -107,3 +107,13 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Fix:** Inline guard that checks `error.digest.startsWith("NEXT_REDIRECT")` — the stable, version-agnostic signal Next.js uses internally for all redirect throws.
 - **Fix commit:** db1b195 (agent/notes-core)
 
+
+---
+
+### settings actions silently discarded errors (2026-04-27)
+
+- **What:** Invite send, role change, and leave-org buttons appeared to do nothing in the org settings page.
+- **Where:** `src/app/orgs/[orgId]/settings/page.tsx` — inline server actions `handleInvite`, `handleRoleChange`, `handleLeave`.
+- **Why bad:** All three called lib functions that return `Result<T>` but ignored the return value entirely. No `redirect` or `revalidatePath` call on success, no error handling on failure — so both success and error states were silently swallowed. Invites were actually being created (visible in audit_log) but the page never re-rendered.
+- **Fix:** Added `searchParams` prop, checked result in each action, added `redirect` with `?message=` on success and `?error=` on failure, flash notices rendered at top of page.
+- **Fix commit:** 2f66565 (main)
