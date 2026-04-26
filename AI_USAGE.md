@@ -89,6 +89,17 @@
 > - Streaming user note content to an LLM without delimiter separation.
 > - Off-by-one in note version number on concurrent updates.
 
+### 2026-04-26 — Module agent `Leibniz` retry with restored ai-summary guide
+
+- Re-ran after baseline added `CLAUDE.md` and `docs/modules/ai-summary.md`.
+- No sub-agents used; implementation is being done directly in the module worktree to keep ownership tight.
+- First implementation chunk is the structured summary schema in `src/lib/ai/schema.ts`, matching the DB-side contract comment in `src/lib/db/schema/ai.ts`.
+- Second implementation chunk isolates the prompt template in `src/lib/ai/prompt.ts` so delimiter handling and prompt-safety rules live in one owned file.
+- Third implementation chunk adds the provider wrapper in `src/lib/ai/provider.ts`, including Anthropic-first selection, timeout handling, OpenAI fallback, schema validation, and typed combined failure reporting.
+- Fourth implementation chunk adds `src/lib/ai/rate-limit.ts` as a separate concern so request throttling can be reviewed independently from provider logic.
+- Fifth implementation chunk adds the generation route under `src/app/api/ai/notes/[noteId]/summary/route.ts`, including permission checks, pending-row persistence, provider invocation, typed failures, and audit events.
+- Sixth implementation chunk adds the summary page and acceptance flow under `src/app/orgs/[orgId]/notes/[noteId]/summary/**`, including a server action that writes `accepted_fields` and `status='accepted'`.
+- Verification gap recorded honestly: `npm run typecheck` could not complete because `tsc` is not installed in this worktree environment (`sh: tsc: command not found`).
 ## 2026-04-26 — Orchestrator takeover of Avicenna (notes-core)
 
 **What Avicenna shipped:** schemas.ts, errors.ts, http.ts, service.ts (796 lines), diff.ts, 5 API route files, 5 app pages, server actions. Two commits were massive multi-concern bundles.

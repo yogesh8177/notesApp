@@ -208,6 +208,79 @@ baseline source files were edited on `main`.
 
 ---
 
+## 2026-04-26 — ai-summary implementation resumed
+
+### Step 1: contract reload
+
+- Read root `CLAUDE.md` and `docs/modules/ai-summary.md`.
+- Confirmed the local guide now freezes the implementation surface sufficiently:
+  - Anthropic primary, OpenAI fallback
+  - zod structured summary schema
+  - delimiter-isolated prompt
+  - `POST /api/ai/notes/[noteId]/summary`
+  - per-user in-memory rate limit
+  - acceptance flow writing `accepted_fields` and `status='accepted'`
+
+### Step 2: schema decision
+
+- Implemented `src/lib/ai/schema.ts` as the app-side structured contract referenced by the frozen DB schema comments.
+- Chose top-level accepted fields (`tldr`, `keyPoints`, `actionItems`, `entities`) for the acceptance UI. This satisfies the guide's "per-field accept" requirement without inventing nested acceptance semantics that are not frozen anywhere else in baseline.
+
+### Step 3: prompt isolation
+
+- Added `src/lib/ai/prompt.ts`.
+- The prompt keeps user note content inside explicit `<note>` delimiters and instructs the model to treat that content as data rather than instructions.
+- The prompt only interpolates `title` and `content`; it does not include org names, user identifiers, or any other cross-tenant context.
+
+### Step 4: provider wrapper
+
+- Added `src/lib/ai/provider.ts` with a single `summarize({ title, content })` entrypoint.
+- Anthropic is primary; OpenAI is fallback on any Anthropic upstream error or timeout over 30 seconds.
+- Provider outputs are parsed against the zod summary schema. Parse/validation failures retry once on the same provider before that provider is considered failed.
+- If both providers fail, the wrapper throws a typed `SummarizeProvidersError` that carries per-provider failure details for the route handler to persist and return as an `UPSTREAM` failure.
+
+### Step 5: rate limiting
+
+- Added `src/lib/ai/rate-limit.ts`.
+- Implemented the required in-memory per-user token bucket at 5 requests per 60 seconds.
+- Stored limiter state on `globalThis` so development reloads do not reset the bucket on every module reload inside the same server process.
+
+### Step 6: generation route
+
+- Added `POST src/app/api/ai/notes/[noteId]/summary/route.ts`.
+- The route uses:
+  - `getCurrentUser` for typed unauthenticated responses
+  - `assertCanReadNote` before loading note content
+  - the in-memory limiter before the expensive LLM call
+  - a pending `ai_summaries` row before generation
+  - `audit()` for request, fallback, complete, and fail events
+- The frozen schema requires non-null `provider` and `model` on pending rows. To avoid changing the shared schema, the route inserts a pending row with `provider='anthropic'` and `model='pending'`, then updates those fields with actual values on success or final failure.
+- On total provider failure, the route records `status='failed'`, saves a combined provider failure message into `error_message`, and returns the standard `UPSTREAM` error envelope.
+
+### Step 7: summary UI and acceptance flow
+
+- Added a standalone summary page under `src/app/orgs/[orgId]/notes/[noteId]/summary/page.tsx` because notes-core has not yet provided a parent note detail route in this worktree.
+- The page explicitly calls `assertCanReadNote` before reading note content or summaries, which is required because org-level layout access is not sufficient for `private` and selectively shared notes.
+- Added a client-side generate button that calls the required API route and refreshes the page on success.
+- Added a server action for acceptance inside the owned summary path:
+  - validates `orgId`, `noteId`, `summaryId`, and field list with zod
+  - calls `assertCanWriteNote`
+  - writes the selected top-level subset into `accepted_fields`
+  - sets `status='accepted'`
+  - audits `ai.summary.accept`
+
+### Step 8: verification
+
+- `git diff --check HEAD~6..HEAD` passed with no whitespace or merge-marker issues.
+- `git status --short` is clean after the scoped feature commits.
+- Compiler verification is currently blocked in this worktree:
+  - `npm run typecheck` invoked `tsc --noEmit`
+  - the shell reported `tsc: command not found`
+- Manual review covered:
+  - owned-path boundaries
+  - prompt delimiter isolation
+  - permission checks before note reads and summary acceptance
+  - audit coverage for `request`, `fallback`, `complete`, `fail`, and `accept`
 ## 2026-04-26 — search module takeover (orchestrator)
 
 Dewey's draft was never committed — untracked files only. Reviewed before
