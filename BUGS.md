@@ -40,3 +40,10 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 ## Findings
 - Updated seed-10k.md in main branch, worktree was unaware of it thus it could not implement the updated plan. Once rebased with main worktree now has updated context.
 - org-admin agent stopped and raised an issue where it didn't have permission to make changes for org switcher implementation, upon review permission was granted as it does own that surface area.
+## [org-admin] Server-only audit() imported in "use client" component
+
+- **Where:** `src/components/org/org-switcher.tsx:4` (org-admin worktree)
+- **Why bad:** `@/lib/log/audit` imports the Drizzle DB client — server-only code. Bundling it into a client component causes a Next.js build error (`cannot import server module from client module`).
+- **Fix:** Removed the import. Switch auditing happens server-side when the org layout re-renders on navigation.
+- **Fix commit:** fd552e7
+

@@ -88,3 +88,41 @@
 > - Using service-role client from a request handler "to make a query work".
 > - Streaming user note content to an LLM without delimiter separation.
 > - Off-by-one in note version number on concurrent updates.
+
+## 2026-04-26 — Orchestrator takeover of Avicenna (notes-core)
+
+**What Avicenna shipped:** schemas.ts, errors.ts, http.ts, service.ts (796 lines), diff.ts, 5 API route files, 5 app pages, server actions. Two commits were massive multi-concern bundles.
+
+**What I intervened on:**
+- Identified two bad commits (09465b5 — service + diff; a9920b0 — 5 routes in one shot)
+- Surveyed via a sub-agent that returned a full bug + commit-boundary report
+- Reset the branch to dc9941f and rebuilt from scratch with fixes baked in
+- Split service.ts → queries.ts / crud.ts / shares.ts / history.ts
+- Split 5 route files into 4 separate commits
+- Split UI into 5 commits (components, actions, list page, detail page, history page)
+- Baked all three fixes in-place: isRedirectError rethrow, SELECT FOR UPDATE, 23505→CONFLICT
+
+**What was right:** Schema/type design was clean. Permission delegation to assertCanReadNote/WriteNote/ShareNote was correct. Audit calls present. diff.ts line-based approach solid.
+
+**What was wrong:** Single-file service with all concerns mixed. Concurrent update race (no FOR UPDATE). Redirect swallowing bug. Redundant version row on soft-delete.
+
+
+## 2026-04-26 — Orchestrator takeover of Planck (org-admin)
+
+**What Planck shipped:** 3 WIP commits with docs + a Drizzle 0000 migration (frozen contract violation) + package-lock.json. Zero product code.
+
+**What I implemented:**
+- `src/lib/orgs/schemas.ts` — zod schemas for create/invite/role
+- `src/lib/orgs/create.ts` — createOrg with slug uniqueness check + owner membership in one tx
+- `src/lib/orgs/invite.ts` — inviteMember (token + audit_log delivery) + acceptInvite (email match guard)
+- `src/lib/orgs/roles.ts` — changeRole (last-owner guard) + leaveOrg
+- `src/lib/orgs/members.ts` — listMembers + listPendingInvites
+- `src/app/orgs/new/page.tsx` — create-org form
+- `src/app/orgs/invite/[token]/page.tsx` — invite accept page with mismatch error + sign-out
+- `src/app/orgs/[orgId]/settings/page.tsx` — member list, role editor, invite form, leave button
+- `src/components/org/org-switcher.tsx` — client dropdown, informational cookie, navigate
+
+**10 commits, each one concern.** No bugs to report — implementation was clean-room from spec.
+
+**Reasoning logged:** invite delivery via audit_log (not hidden, configurable email hook); service-role client for org creation (creator has no membership yet); email mismatch shown to user with sign-out option as spec requires.
+

@@ -252,3 +252,42 @@ their original blocker conclusions are stale.
   `seed-10k` and `deploy-ops` guides.
 - `Avicenna` (`notes-core`) is still the long-running active implementation
   worker and remains isolated in `/private/tmp/notes-app-notes-core`.
+
+## 2026-04-26 — notes-core takeover (Avicenna worktree)
+
+### What happened
+- All 6 worktrees synced to main before any work started.
+- Surveyed Avicenna's output: service.ts (796 lines) and route files were each committed as a single massive commit — violated one-concern-per-commit rule.
+- Reset branch to after `errors + http` commit (dc9941f), then rebuilt all of Avicenna's work with proper granularity.
+
+### Decisions
+- Split service.ts into 4 focused modules: `queries.ts` (internal helpers), `crud.ts` (list/detail/create/update/delete), `shares.ts` (upsert/remove), `history.ts` (version snapshots).
+- Baked two bug fixes directly into the right commits rather than adding fix-commits on top:
+  - `isRedirectError` rethrow → inside server actions (not a separate fix commit)
+  - `SELECT ... FOR UPDATE` + 23505→CONFLICT mapping → baked into crud.ts and shares.ts
+  - Soft-delete no longer writes a redundant version row
+- Route handlers split 1-per-concern: list/create, detail/update/delete, shares, history
+- UI split: components.tsx → actions.ts → list page.tsx → detail page.tsx → history page.tsx
+
+### Outcome
+18 commits from dc9941f to 68caf28, each reviewable in isolation.
+
+
+## 2026-04-26 — org-admin implementation (Planck worktree)
+
+### What happened
+- Planck (Codex agent) committed 3 WIP entries that contained only doc updates and a stale Drizzle migration (0000_*.sql) — which violates the frozen contract on drizzle/ files. No actual product code was shipped.
+- Discarded all 3 WIP commits (git reset --hard f09bf47), then implemented org-admin from scratch.
+
+### Architecture decisions
+- Split service layer into focused single-responsibility files: create.ts / invite.ts / roles.ts / members.ts — one file per concern, mirrors the notes-core split pattern. Each is its own commit.
+- `createOrg` uses the Drizzle `db` client directly (service-role equivalent via DATABASE_URL) because the creator has no membership row yet at INSERT time — RLS on memberships would block a user-scoped client.
+- `inviteMember` stores the invite link in audit_log as the primary delivery mechanism. Email sending is left as a configurable hook (log.info shows the link; when EMAIL_DESTINATION is wired, the function extends here).
+- `acceptInvite` checks email match server-side and returns FORBIDDEN with a sign-out option — not just a client-side guard.
+- `changeRole` last-owner guard: counts owners AFTER the proposed change conceptually; if `count(role='owner') <= 1` and target is being demoted from owner, return 422.
+- Org switcher is a client component that sets only an informational cookie — auth always uses URL [orgId] segment, never the cookie for permission decisions.
+
+### What's still missing (nice-to-have)
+- Org name/slug edit on the settings page (read the spec again — not required for this build)
+- Email send integration when EMAIL_DESTINATION env is set
+
