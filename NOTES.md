@@ -312,3 +312,12 @@ their original blocker conclusions are stale.
 - toResponse() → route handlers only (converts Result<T> to HTTP response for JSON API callers)
 - Raw Result<T> → server actions (returned directly, page reads .ok / .data / .error)
 
+
+## 2026-04-26 — isRedirectError fix (post-merge)
+
+- PR for notes-core was merged before the `isRedirectError` fix landed on the branch.
+- Fix cherry-picked from db1b195 → d67fdb9 directly onto main.
+- Root cause: `next/dist/client/components/redirect` does not export `isRedirectError` as a public API in Next.js 15 — resolves to `undefined` silently, throws at call site.
+- Replacement: inline digest check (`error.digest.startsWith("NEXT_REDIRECT")`) — version-agnostic, no internal import dependency.
+- Rule going forward: never import from `next/dist/**` — those are internal bundle paths with no stability guarantees.
+
