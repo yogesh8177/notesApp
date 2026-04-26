@@ -518,3 +518,22 @@ Dispatch four parallel module agents — one per worktree — each working only 
 
 Each concern is a separate commit per CLAUDE.md rules. SubmitButton → loading.tsx files → wiring → docs.
 
+
+---
+
+## 2026-04-27 — Production build fixes (orchestrator)
+
+### Problem
+`npm run build` failed with ESLint errors and TypeScript type errors across multiple files. None had been caught earlier because `tsc --noEmit` was used for type checks but the Next.js build runs ESLint + full type checking with stricter constraints.
+
+### Fixes applied
+
+- **`src/lib/log/index.ts`** — removed `eslint-disable` comment referencing `@typescript-eslint/no-require-imports` rule which is not in the ESLint config (`next/core-web-vitals`). Without the comment the `require()` passes cleanly.
+- **`src/app/orgs/invite/[token]/page.tsx`** — replaced bare `<a href="/orgs">` with `<Link>` (Next.js lint rule); fixed `result.error?.code` → `result.code` and `result.error?.message` → `result.message` (Err type has flat shape, not nested under `.error`).
+- **`src/app/orgs/[orgId]/files/files-client.tsx`** — wrapped `refreshFiles` in `useCallback([orgId])` and added it to `useEffect` deps to satisfy `react-hooks/exhaustive-deps`.
+- **`src/lib/ai/schema.ts`** — replaced loop-with-indexed-assignment with `Object.fromEntries` to avoid TypeScript union intersection error on discriminated field type.
+- **`src/lib/auth/permissions.ts`** — Drizzle infers `noteShares.permission` as the literal default `"view" | null` on left-join columns rather than the full `SharePermission` enum. Extracted `hasEditShare = (shareRaw as string | null) === "edit"` to bypass the TS2367 comparison error.
+- **`src/lib/files/index.ts`** — `row.uploader` is from a left join and can be null; added optional chaining.
+- **`src/lib/validation/result.ts`** — added `"UNPROCESSABLE"` to `ErrorCode` union (used in `orgs/roles.ts` and `orgs/invite.ts` but missing from the baseline enum).
+- **`src/lib/supabase/middleware.ts` + `server.ts`** — added explicit `{ name: string; value: string; options?: object }[]` type to `setAll` callback parameter.
+- **`src/lib/env.ts`** — removed `.min(1)` from `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (both `.optional()`). An empty string in `.env` caused `min(1)` to fail at build time during static route generation even though the vars are optional at runtime.

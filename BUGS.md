@@ -153,3 +153,16 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Why bad:** If only set as runtime env vars, the client bundle gets `undefined` for all three — Supabase client won't initialise, auth flows break silently.
 - **Fix:** Not a code fix. Must be configured in Railway: Settings → Variables → add each as a Build Variable in addition to (or instead of) a runtime variable. Dockerfile already has the correct `ARG` declarations.
 - **Fix commit:** N/A — operational configuration required.
+
+---
+
+### Production build blocked by 8 type/lint errors (2026-04-27)
+
+- **What:** `npm run build` failed — ESLint errors and TypeScript type errors across 10 files.
+- **Where:** `log/index.ts`, `invite/[token]/page.tsx`, `files-client.tsx`, `ai/schema.ts`, `auth/permissions.ts`, `files/index.ts`, `validation/result.ts`, `supabase/middleware.ts`, `supabase/server.ts`, `env.ts`.
+- **Why bad:** Deployment blocked. None were caught earlier because `tsc --noEmit` was used for spot-checks but the Next.js build runs stricter ESLint + full type compilation.
+- **Notable sub-bugs:**
+  - `"UNPROCESSABLE"` missing from `ErrorCode` union — used in 3 places but never declared; silent until build.
+  - Drizzle infers left-join enum default as literal type (`"view"` not `"view" | "edit"`) — required `(value as string) === "edit"` workaround.
+  - `ANTHROPIC_API_KEY: z.string().min(1).optional()` rejects empty string `""` — fails build when `.env` has the key blank.
+- **Fix commit:** 2ff2775 (main)

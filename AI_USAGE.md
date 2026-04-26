@@ -199,3 +199,27 @@ Orchestrator read every relevant page source directly (`notes/page.tsx`, `notes/
 | org-admin | agent/org-admin-loading | 5 (SubmitButton, 3× loading.tsx, wiring) |
 | ai-summary | agent/ai-summary-loading | 1 (docs only — no pages to instrument) |
 
+
+---
+
+## 2026-04-27 — Production build fixes (orchestrator, no sub-agent)
+
+**Trigger:** `npm run build` run to verify deployment readiness; failed with 8 distinct errors across 10 files.
+
+**What I did:** iterated build → fix → build until clean. No sub-agent — all errors were straightforward type/lint fixes resolvable from reading the failing file in isolation.
+
+**Errors and root causes:**
+
+| File | Error | Root cause |
+|---|---|---|
+| `log/index.ts` | ESLint rule not found | `@typescript-eslint/*` rules not in `next/core-web-vitals` config |
+| `invite/[token]/page.tsx` | `<a>` + `result.error.code` | Bare anchor; flat `Err` type misread as nested |
+| `files-client.tsx` | `useEffect` missing dep | `refreshFiles` not memoized |
+| `ai/schema.ts` | TS union intersection | Loop assignment across discriminated union |
+| `auth/permissions.ts` | TS2367 comparison | Drizzle infers literal default on left-join enum column |
+| `files/index.ts` | Possibly null | Left-join `uploader` not guarded |
+| `validation/result.ts` | `"UNPROCESSABLE"` missing | Baseline `ErrorCode` union never included it |
+| `supabase/middleware.ts` + `server.ts` | Implicit any | `setAll` callback param untyped |
+| `env.ts` | Build-time env failure | `.min(1).optional()` rejects empty string; AI keys empty in local `.env` |
+
+**Build result:** clean — all routes compile as dynamic (ƒ), no static prerender errors.
