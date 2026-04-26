@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { audit } from "@/lib/log/audit";
 
 interface Org {
   id: string;
