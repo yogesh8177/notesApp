@@ -24,5 +24,17 @@ export function toNotesErr(error: unknown): Err {
   if (error instanceof PermissionError || error instanceof ForbiddenError) {
     return err("FORBIDDEN", error.message);
   }
+  if (isUniqueViolation(error)) {
+    return err("CONFLICT", "This note was modified concurrently. Reload and try again.");
+  }
   return err("INTERNAL", "Unexpected notes error");
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "23505"
+  );
 }
