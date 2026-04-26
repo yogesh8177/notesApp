@@ -59,6 +59,14 @@
 - `ai-summary` — worker `Leibniz` stopped without product code changes and logged blockers in the module worktree docs. Missing local contracts: root `CLAUDE.md`, owned app paths, and note-detail route shape.
 - `org-admin` — worker `Planck` stopped without product code changes and logged blockers in the module worktree docs. Missing local contracts: root `CLAUDE.md`, owned app paths, and org create/invite/settings behavior.
 
+### 2026-04-26 — files module outcome (`Galileo`, `agent/files`)
+
+- Implemented the files module inside owned paths only.
+- Added signed upload/download flows, org/note permission checks, list/delete,
+  and an org files UI.
+- Left `/notes/[id]` attachment UI untouched because it is outside files
+  ownership.
+
 ## Things we don't trust agents to do (kept on the human side)
 
 - **Approving baseline contract changes** (schema, RLS, auth, logger). If a
