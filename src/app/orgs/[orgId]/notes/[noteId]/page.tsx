@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getNoteDetailForUser, toNotesErr } from "@/lib/notes";
 import { deleteNoteAction, removeShareAction, updateNoteAction, upsertShareAction } from "../actions";
 import { EmptyState, FlashNotice, SectionCard, VisibilityBadge, formatTimestamp } from "../components";
+import { SubmitButton } from "../_components/submit-button";
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -102,11 +103,11 @@ export default async function NoteDetailPage({
               <Input name="changeSummary" placeholder="What changed?" />
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit">Save changes</Button>
+              <SubmitButton pendingText="Saving…">Save changes</SubmitButton>
               {note.permissions.canDelete ? (
-                <Button type="submit" formAction={deleteAction} variant="destructive">
+                <SubmitButton formAction={deleteAction} variant="destructive" pendingText="Deleting…">
                   Delete note
-                </Button>
+                </SubmitButton>
               ) : null}
             </div>
           </form>
@@ -168,7 +169,7 @@ export default async function NoteDetailPage({
                 <option value="view">Can view</option>
                 <option value="edit">Can edit</option>
               </select>
-              <Button type="submit">Add or update share</Button>
+              <SubmitButton pendingText="Saving…">Add or update share</SubmitButton>
             </form>
 
             {note.shares.length === 0 ? (
@@ -191,9 +192,9 @@ export default async function NoteDetailPage({
                         </p>
                       </div>
                       <form action={removeAction}>
-                        <Button type="submit" size="sm" variant="outline">
+                        <SubmitButton size="sm" variant="outline" pendingText="…">
                           Remove
-                        </Button>
+                        </SubmitButton>
                       </form>
                     </div>
                   );
