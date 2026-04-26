@@ -291,3 +291,24 @@ their original blocker conclusions are stale.
 - Org name/slug edit on the settings page (read the spec again — not required for this build)
 - Email send integration when EMAIL_DESTINATION env is set
 
+
+## 2026-04-26 — Runtime bug fixes (post-PR-raise)
+
+### Bugs found during manual testing
+
+**1. 23503 FK on orgs.created_by**
+- Cause: auth.users exists but public.users mirror row does not (trigger only fires on INSERT into auth.users; dev/dashboard users pre-date the migration).
+- Fix: upsert public.users row at the start of createOrg transaction (onConflictDoNothing). Commit a67a74b on agent/org-admin.
+
+**2. pino "the worker has exited"**
+- Cause: pino transport option spawns a worker_thread; Next.js dev server recycles workers between requests, killing it mid-flight.
+- Fix: use pino-pretty as synchronous stream (pino(opts, stream)) in dev instead of transport. No worker thread. Production path unchanged. Commit ea2eedd on main.
+
+**3. toResponse() in server actions**
+- Cause: server actions returned toResponse(ok({id})) — a NextResponse object. Page reads result.ok (NextResponse.ok = true for 2xx) then crashes on result.data.id because NextResponse has no .data field.
+- Fix: stripped toResponse() from all three org-admin action files. Server actions return raw Result<T>. Commit 307c381 on agent/org-admin.
+
+### Design rule clarified
+- toResponse() → route handlers only (converts Result<T> to HTTP response for JSON API callers)
+- Raw Result<T> → server actions (returned directly, page reads .ok / .data / .error)
+
