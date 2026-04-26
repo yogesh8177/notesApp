@@ -225,3 +225,9 @@ baseline source files were edited on `main`.
 
 - Implemented `src/lib/ai/schema.ts` as the app-side structured contract referenced by the frozen DB schema comments.
 - Chose top-level accepted fields (`tldr`, `keyPoints`, `actionItems`, `entities`) for the acceptance UI. This satisfies the guide's "per-field accept" requirement without inventing nested acceptance semantics that are not frozen anywhere else in baseline.
+
+### Step 3: prompt isolation
+
+- Added `src/lib/ai/prompt.ts`.
+- The prompt keeps user note content inside explicit `<note>` delimiters and instructs the model to treat that content as data rather than instructions.
+- The prompt only interpolates `title` and `content`; it does not include org names, user identifiers, or any other cross-tenant context.
