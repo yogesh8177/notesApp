@@ -244,3 +244,15 @@ baseline source files were edited on `main`.
 - Added `src/lib/ai/rate-limit.ts`.
 - Implemented the required in-memory per-user token bucket at 5 requests per 60 seconds.
 - Stored limiter state on `globalThis` so development reloads do not reset the bucket on every module reload inside the same server process.
+
+### Step 6: generation route
+
+- Added `POST src/app/api/ai/notes/[noteId]/summary/route.ts`.
+- The route uses:
+  - `getCurrentUser` for typed unauthenticated responses
+  - `assertCanReadNote` before loading note content
+  - the in-memory limiter before the expensive LLM call
+  - a pending `ai_summaries` row before generation
+  - `audit()` for request, fallback, complete, and fail events
+- The frozen schema requires non-null `provider` and `model` on pending rows. To avoid changing the shared schema, the route inserts a pending row with `provider='anthropic'` and `model='pending'`, then updates those fields with actual values on success or final failure.
+- On total provider failure, the route records `status='failed'`, saves a combined provider failure message into `error_message`, and returns the standard `UPSTREAM` error envelope.

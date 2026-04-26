@@ -88,3 +88,4 @@
 - Second implementation chunk isolates the prompt template in `src/lib/ai/prompt.ts` so delimiter handling and prompt-safety rules live in one owned file.
 - Third implementation chunk adds the provider wrapper in `src/lib/ai/provider.ts`, including Anthropic-first selection, timeout handling, OpenAI fallback, schema validation, and typed combined failure reporting.
 - Fourth implementation chunk adds `src/lib/ai/rate-limit.ts` as a separate concern so request throttling can be reviewed independently from provider logic.
+- Fifth implementation chunk adds the generation route under `src/app/api/ai/notes/[noteId]/summary/route.ts`, including permission checks, pending-row persistence, provider invocation, typed failures, and audit events.
