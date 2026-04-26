@@ -51,13 +51,22 @@
 - `ai-summary` — worker `Leibniz`; worktree `/private/tmp/notes-app-ai-summary`; branch `agent/ai-summary`; prompt: inspect owned paths and either implement safely from local baseline or log precise blockers because no local module guide is present.
 - `org-admin` — worker `Planck`; worktree `/private/tmp/notes-app-org-admin`; branch `agent/org-admin`; prompt: inspect owned paths and either implement safely from local baseline or log precise blockers because no local module guide is present.
 - `seed-10k` — worker `Ampere`; worktree `/private/tmp/notes-app-seed-10k`; branch `agent/seed-10k`; prompt: inspect `scripts/seed/**` and either improve the large-seed workflow safely or log precise blockers because no local module guide is present.
-- `deploy-ops` — pending; branch/worktree reserved at `/private/tmp/notes-app-deploy-ops` on `agent/deploy-ops`; worker launch deferred by the 6-agent runtime cap.
+- `deploy-ops` — worker `Harvey`; worktree `/private/tmp/notes-app-deploy-ops`; branch `agent/deploy-ops`; prompt: inspect owned paths and implement readiness/deployment work only inside deploy-ops surfaces.
 
 ### 2026-04-26 — Module agent outcomes so far
 
 - `search` — worker `Dewey` implemented the module inside owned paths only: `src/lib/search/**`, `src/app/api/search/**`, and `src/app/orgs/[orgId]/search/**`. Logged blocker that local `CLAUDE.md` and `docs/modules/search.md` were missing in the worktree; targeted verification was limited to `git diff --check` because local `tsc` is unavailable.
-- `ai-summary` — worker `Leibniz` stopped without product code changes and logged blockers in the module worktree docs. Missing local contracts: root `CLAUDE.md`, owned app paths, and note-detail route shape.
-- `org-admin` — worker `Planck` stopped without product code changes and logged blockers in the module worktree docs. Missing local contracts: root `CLAUDE.md`, owned app paths, and org create/invite/settings behavior.
+- `files` — worker `Galileo` implemented the module inside owned paths only: `src/lib/files/**`, `src/app/api/files/**`, and `src/app/orgs/[orgId]/files/**`. Logged ownership-boundary note that per-note attachment UI under `/notes/[id]` was out of scope for this worktree, so note attachment support was surfaced from the org files screen instead.
+- `ai-summary` — worker `Leibniz` completed the module inside owned paths only after the guide refresh. It added the zod summary schema, delimiter-isolated prompt, Anthropic-primary/OpenAI-fallback provider wrapper, in-memory per-user rate limit, `POST /api/ai/notes/[noteId]/summary`, and a standalone summary page with accepted-fields persistence and audit logging. Verification remained limited by missing local `tsc`.
+- `org-admin` — worker `Planck` did start after the guide refresh, but stopped on a real frozen-contract blocker: the required header org switcher lives in frozen [src/app/orgs/[orgId]/layout.tsx](/Users/yogesh/Projects/Notes%20App/src/app/orgs/[orgId]/layout.tsx) and there is no owned extension point for org-admin to implement it legally from its paths.
+- `seed-10k` — worker `Ampere` implemented the large-seed workflow inside `scripts/seed/**`: deterministic org/user/note/version/share/file generation, auth-user creation via Supabase admin API, storage uploads, batched inserts, cleanup-on-failure, and summary logging. End-to-end execution was not run in-session because local tool/env setup was unavailable.
+- `deploy-ops` — worker `Harvey` added `/readyz` under `src/app/readyz/**` with DB-backed readiness semantics only. This is partial relative to the later-available module guide, which also requires Supabase checks and a deploy runbook.
+
+### 2026-04-26 — Guide refresh
+
+- Baseline now contains module guides for `ai-summary`, `org-admin`, `seed-10k`, and `deploy-ops`.
+- `Leibniz` and `Planck` were resumed with the explicit guide requirements after their first blocker-only pass.
+- `Ampere` and `Harvey` need a follow-up pass against the now-present module guides to confirm alignment or patch owned surfaces.
 
 ## Things we don't trust agents to do (kept on the human side)
 

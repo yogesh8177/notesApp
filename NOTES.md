@@ -205,3 +205,50 @@ worker is confined to its own branch/worktree pair.
 The sandbox blocks writes under `.git`, so worktree creation required
 escalation. That escalation was used only to materialize the git worktrees; no
 baseline source files were edited on `main`.
+
+## 2026-04-26 — Baseline vs worktree clarification (orchestrator)
+
+### Answer
+
+Module implementation work from the dispatched agents is landing in the
+non-baseline worktrees and branches, not in the frozen baseline worktree on
+`main`.
+
+### Important exception
+
+`main` still carries orchestration-doc edits made by the orchestrator:
+
+- `NOTES.md`
+- `AI_USAGE.md`
+
+Those are coordination artifacts, not module product code.
+
+### Current baseline-side drift to inspect, not overwrite
+
+- `docs/modules/seed-10k.md` is currently modified in the baseline worktree.
+  I did not revert it. It now contains explicit data-semantics guidance that
+  was not available to the first `seed-10k` dispatch and needs to be treated
+  as the current contract.
+
+## 2026-04-26 — Guide refresh and re-dispatch (orchestrator)
+
+### New information
+
+The baseline now contains module guides for:
+
+- `docs/modules/ai-summary.md`
+- `docs/modules/org-admin.md`
+- `docs/modules/deploy-ops.md`
+- `docs/modules/seed-10k.md`
+
+These guides were not available to the first pass of some module workers, so
+their original blocker conclusions are stale.
+
+### Actions
+
+- Resumed `Leibniz` on `agent/ai-summary` with the explicit `ai-summary` guide.
+- Resumed `Planck` on `agent/org-admin` with the explicit `org-admin` guide.
+- Marked `Ampere` and `Harvey` for follow-up alignment against the now-present
+  `seed-10k` and `deploy-ops` guides.
+- `Avicenna` (`notes-core`) is still the long-running active implementation
+  worker and remains isolated in `/private/tmp/notes-app-notes-core`.

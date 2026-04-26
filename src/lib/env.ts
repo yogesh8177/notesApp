@@ -35,6 +35,7 @@ const schema = z.object({
 });
 
 const parsed = schema.safeParse(process.env);
+
 if (!parsed.success) {
   console.error("❌ Invalid environment:", parsed.error.flatten().fieldErrors);
   throw new Error("Invalid environment — see logs");
