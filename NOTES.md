@@ -206,6 +206,49 @@ The sandbox blocks writes under `.git`, so worktree creation required
 escalation. That escalation was used only to materialize the git worktrees; no
 baseline source files were edited on `main`.
 
+---
+
+## 2026-04-26 — search module takeover (orchestrator)
+
+Dewey's draft was never committed — untracked files only. Reviewed before
+committing; found three correctness issues and one missing feature.
+
+### Bugs fixed before first commit
+
+1. **Admin bypass removed** — `buildReadablePredicate` had an early return of
+   `sql\`true\`` for `owner`/`admin` roles. Visibility is user-relative; admins
+   cannot read private notes authored by others.
+
+2. **Tag filter moved from HAVING to WHERE** — `input.tag` filtering was done in
+   `.having(bool_or(...))` post-aggregation. Moved to WHERE via EXISTS subquery
+   so it applies before GROUP BY and is more index-friendly.
+
+3. **`#tag` prefix path added** — spec requires a separate code path when the
+   query starts with `#`: skip FTS, look up tag_id, filter via `note_tags`.
+   Dewey's draft was missing this entirely.
+
+### What was kept
+
+- FTS query structure (tsvector + websearch_to_tsquery + ts_rank_cd) — correct.
+- trgm fallback in HAVING relevance gate — fine (this HAVING is a relevance
+  threshold, not a filter, so it doesn't break pagination).
+- ts_headline snippet with `<<`/`>>` sentinels — correct.
+- contracts.ts and URL param parser — no changes needed.
+- Route handler auth check pattern — correct.
+
+### Added
+
+- `search.execute` audit event (q truncated to 256, resultCount, latencyMs).
+- `SearchSubmitButton` client component with `useFormStatus` for pending state.
+- Result card titles now link to `/orgs/[orgId]/notes/[id]`.
+- Tag chips in results link to `#tag` prefix search.
+
+### Commits
+
+- `b7b20e8` feat(search): contracts, schemas, and URL param parser
+- `0e58a2e` feat(search): tsvector + trgm ranked query builder with visibility predicate
+- `143fa7b` feat(search): GET /api/search route handler
+- `9e5fc7a` feat(search): search results page — filters, snippet highlight, pagination
 ## 2026-04-26 — Baseline vs worktree clarification (orchestrator)
 
 ### Answer
