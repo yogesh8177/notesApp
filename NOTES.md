@@ -172,3 +172,36 @@ log writes).
 - All .md docs.
 
 ---
+
+## 2026-04-26 — Worktree orchestration (orchestrator)
+
+### Decision
+
+CLAUDE's ownership model is now enforced with isolated git worktrees off the
+frozen `main` baseline. I did not let module work land on `main`; every active
+worker is confined to its own branch/worktree pair.
+
+### Worktree map
+
+- `agent/notes-core` → `/private/tmp/notes-app-notes-core`
+- `agent/search` → `/private/tmp/notes-app-search`
+- `agent/files` → `/private/tmp/notes-app-files`
+- `agent/ai-summary` → `/private/tmp/notes-app-ai-summary`
+- `agent/org-admin` → `/private/tmp/notes-app-org-admin`
+- `agent/seed-10k` → `/private/tmp/notes-app-seed-10k`
+- `agent/deploy-ops` → `/private/tmp/notes-app-deploy-ops`
+
+### Active dispatch
+
+- `notes-core`, `search`, `files` received implementation prompts tied to
+  their module guides and owned paths only.
+- `ai-summary`, `org-admin`, `seed-10k` received scoped discovery-or-implement
+  prompts because their module guides are not present locally.
+- `deploy-ops` is queued until the runtime frees one more agent slot; the
+  worktree/branch already exists.
+
+### Constraint enforced
+
+The sandbox blocks writes under `.git`, so worktree creation required
+escalation. That escalation was used only to materialize the git worktrees; no
+baseline source files were edited on `main`.
