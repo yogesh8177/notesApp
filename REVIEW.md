@@ -88,6 +88,7 @@
 *pending:*
 
 ### Org admin
+Found a conflict for implementing org switcher in the baseline vs agent scoped code change path. Allowed permission for agent implementing org functionality to edit required file under orgs>[orgId]>layout.tsx directory.
 *pending:*
 
 ### Seed data
