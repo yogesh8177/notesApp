@@ -12,13 +12,13 @@ import { env } from "@/lib/env";
  *   - Use the `audit()` helper for events that must also persist to audit_log.
  *   - Never log secrets, tokens, or full note bodies. Use `redact` if unsure.
  */
-const isProd = env.NODE_ENV === "production";
+const isProd = (env.NODE_ENV ?? "production") === "production";
 
 const baseOptions: pino.LoggerOptions = {
-  level: env.LOG_LEVEL,
+  level: env.LOG_LEVEL ?? "info",
   base: {
     service: "notes-app",
-    env: env.NODE_ENV,
+    env: env.NODE_ENV ?? "production",
   },
   redact: {
     paths: [
