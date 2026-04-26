@@ -2,7 +2,7 @@
 
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { orgs, memberships } from "@/lib/db/schema";
+import { orgs, memberships, users } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { audit } from "@/lib/log/audit";
 import { err, fromZod, ok, toResponse } from "@/lib/validation/result";
@@ -32,6 +32,20 @@ export async function createOrg(input: CreateOrgInput) {
   }
 
   const [org] = await db.transaction(async (tx) => {
+    // Ensure the public.users profile row exists. The on_auth_user_created
+    // trigger normally handles this, but it only fires on INSERT into auth.users.
+    // Users created before the migration ran (e.g. via the Supabase dashboard)
+    // or in environments where the trigger fired silently have no profile row,
+    // causing the orgs.created_by FK to fail with 23503.
+    await tx
+      .insert(users)
+      .values({
+        id: user.id,
+        email: user.email!,
+        displayName: (user.user_metadata?.display_name as string | undefined) ?? null,
+      })
+      .onConflictDoNothing();
+
     const rows = await tx
       .insert(orgs)
       .values({ name, slug, createdBy: user.id })
