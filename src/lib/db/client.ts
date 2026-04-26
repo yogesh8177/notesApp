@@ -15,7 +15,7 @@ const globalForDb = globalThis as unknown as {
 const pg =
   globalForDb.pg ??
   postgres(env.DATABASE_URL, {
-    max: env.NODE_ENV === "production" ? 10 : 1,
+    max: env.NODE_ENV === "production" ? 10 : 5,
     idle_timeout: 20,
     connect_timeout: 10,
     prepare: false, // required for Supabase pooler (transaction mode)

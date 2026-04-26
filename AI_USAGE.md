@@ -223,3 +223,24 @@ Orchestrator read every relevant page source directly (`notes/page.tsx`, `notes/
 | `env.ts` | Build-time env failure | `.min(1).optional()` rejects empty string; AI keys empty in local `.env` |
 
 **Build result:** clean — all routes compile as dynamic (ƒ), no static prerender errors.
+
+## 2026-04-27 — Performance investigation: slow API calls (orchestrator, no sub-agent)
+
+**Task:** User reported 2–3 second API latency on localhost.
+
+**What I did:**
+1. Read `src/lib/db/client.ts` — connection pool config
+2. Read `src/lib/supabase/middleware.ts` — found first `getUser()` call
+3. Read `src/lib/auth/session.ts` — found second `getUser()` call (the real culprit)
+4. Read `src/lib/auth/org.ts` — confirmed `requireOrgRole` chains through `getCurrentUser()`
+5. Grep'd `src/lib/notes/` — confirmed `Promise.all` already used; identified pool `max: 1` as dev bottleneck
+
+**No sub-agent used** — sequential file reads answered the question; delegating would have added overhead with no benefit.
+
+**Changes made:**
+- `session.ts`: `getUser()` → `getSession()` (eliminates one ~150–300ms Supabase network call per page load)
+- `db/client.ts`: `max: 1 → 5` in dev (allows `Promise.all` DB queries to run in parallel)
+
+**What was right:** Correctly identified the double auth call as root cause. `getSession()` is safe here because the middleware's `getUser()` on the same request already validated and refreshed the JWT.
+
+**What to watch:** If Supabase ever adds server-side session revocation that needs to be enforced immediately (e.g. admin force-logout), `getSession()` won't catch revoked tokens mid-JWT-lifetime. For a notes app this is an acceptable tradeoff; revisit if auth requirements change.

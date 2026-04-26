@@ -537,3 +537,29 @@ Each concern is a separate commit per CLAUDE.md rules. SubmitButton → loading.
 - **`src/lib/validation/result.ts`** — added `"UNPROCESSABLE"` to `ErrorCode` union (used in `orgs/roles.ts` and `orgs/invite.ts` but missing from the baseline enum).
 - **`src/lib/supabase/middleware.ts` + `server.ts`** — added explicit `{ name: string; value: string; options?: object }[]` type to `setAll` callback parameter.
 - **`src/lib/env.ts`** — removed `.min(1)` from `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (both `.optional()`). An empty string in `.env` caused `min(1)` to fail at build time during static route generation even though the vars are optional at runtime.
+
+## 2026-04-27 — Performance: eliminated double auth round-trip + dev pool fix (orchestrator)
+
+### Problem
+API calls taking 2–3 seconds on localhost. User reported consistent slowness across all pages.
+
+### Root causes identified
+
+1. **Double `getUser()` network call per request**
+   - `src/lib/supabase/middleware.ts` calls `supabase.auth.getUser()` to refresh the JWT (~150–300ms, network call to Supabase auth server)
+   - `src/lib/auth/session.ts` `getCurrentUser()` also called `supabase.auth.getUser()` — another ~150–300ms network call, every page, every request
+   - These are sequential from the user's perspective: middleware fires first, then layout + page render calls `getCurrentUser()`
+
+2. **Dev connection pool size = 1**
+   - `src/lib/db/client.ts` used `max: 1` in dev
+   - Notes list and note detail pages use `Promise.all([loadTagsForNotes, loadShareCounts, ...])` to batch queries
+   - With pool `max: 1`, those parallel promises serialized through one connection — no actual parallelism in dev
+
+### Fixes
+
+- **`src/lib/auth/session.ts`** — switched `getCurrentUser()` from `getUser()` to `getSession()`. The middleware already ran `getUser()` and refreshed the cookie. `getSession()` reads the JWT claims from the cookie locally — no network call. Security is unchanged: RLS enforces data isolation; middleware handles JWT refresh.
+- **`src/lib/db/client.ts`** — raised dev pool `max: 1 → 5` so concurrent queries in `Promise.all` actually run in parallel.
+
+### What's still there
+- The middleware `getUser()` call (~150ms) is unavoidable — it's what keeps the session cookie fresh.
+- Geographic latency if Railway region ≠ Supabase region — fix by aligning regions in Railway/Supabase dashboards.
