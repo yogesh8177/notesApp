@@ -256,3 +256,15 @@ baseline source files were edited on `main`.
   - `audit()` for request, fallback, complete, and fail events
 - The frozen schema requires non-null `provider` and `model` on pending rows. To avoid changing the shared schema, the route inserts a pending row with `provider='anthropic'` and `model='pending'`, then updates those fields with actual values on success or final failure.
 - On total provider failure, the route records `status='failed'`, saves a combined provider failure message into `error_message`, and returns the standard `UPSTREAM` error envelope.
+
+### Step 7: summary UI and acceptance flow
+
+- Added a standalone summary page under `src/app/orgs/[orgId]/notes/[noteId]/summary/page.tsx` because notes-core has not yet provided a parent note detail route in this worktree.
+- The page explicitly calls `assertCanReadNote` before reading note content or summaries, which is required because org-level layout access is not sufficient for `private` and selectively shared notes.
+- Added a client-side generate button that calls the required API route and refreshes the page on success.
+- Added a server action for acceptance inside the owned summary path:
+  - validates `orgId`, `noteId`, `summaryId`, and field list with zod
+  - calls `assertCanWriteNote`
+  - writes the selected top-level subset into `accepted_fields`
+  - sets `status='accepted'`
+  - audits `ai.summary.accept`
