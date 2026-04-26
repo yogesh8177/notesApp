@@ -47,3 +47,12 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Fix:** Removed the import. Switch auditing happens server-side when the org layout re-renders on navigation.
 - **Fix commit:** fd552e7
 
+
+## [org-admin] 23503 FK violation on orgs.created_by — missing public.users profile
+
+- **Where:** `src/lib/orgs/create.ts` — `createOrg` transaction
+- **Why bad:** `orgs.created_by` is a FK to `public.users.id`. `requireUser()` returns the Supabase `auth.users` record. The `on_auth_user_created` trigger normally mirrors it into `public.users`, but users created *before* the migration ran (Supabase dashboard users, dev accounts) have no profile row — causing SQLSTATE 23503 at INSERT.
+- **Symptom:** `insert or update on table "orgs" violates foreign key constraint "orgs_created_by_users_id_fk"` in production/dev.
+- **Fix:** Upsert `public.users` with `onConflictDoNothing` at the start of the `createOrg` transaction so the row always exists regardless of trigger history.
+- **Fix commit:** a67a74b
+
