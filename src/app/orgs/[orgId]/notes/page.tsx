@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth/session";
 import { listNotesForUser, notesListQuerySchema } from "@/lib/notes";
 import { createNoteAction } from "./actions";
 import { EmptyState, FlashNotice, VisibilityBadge, formatTimestamp } from "./components";
+import { SubmitButton } from "./_components/submit-button";
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -132,7 +133,7 @@ export default async function NotesPage({
                 <Input name="changeSummary" placeholder="Initial version summary" />
               </div>
               <div>
-                <Button type="submit">Create note</Button>
+                <SubmitButton pendingText="Creating…">Create note</SubmitButton>
               </div>
             </form>
           </CardContent>
