@@ -56,3 +56,18 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Fix:** Upsert `public.users` with `onConflictDoNothing` at the start of the `createOrg` transaction so the row always exists regardless of trigger history.
 - **Fix commit:** a67a74b
 
+
+## [all modules] toResponse() used in server actions — returns NextResponse not Result<T>
+
+- **Where:** `src/lib/orgs/create.ts`, `invite.ts`, `roles.ts` (and potentially notes-core actions if copied the pattern)
+- **Why bad:** `toResponse(ok({id}))` returns a `NextResponse` HTTP response object. When a server action returns this and the page checks `result.ok`, it reads `NextResponse.ok` (true for any 2xx status) — so the if-branch runs. But `result.data` is undefined because `NextResponse` has no `.data` property, causing `TypeError: Cannot read properties of undefined (reading 'id')`.
+- **Rule:** `toResponse()` is **route handler only**. Server actions return the raw `Result<T>` so calling pages can read `.ok`, `.data`, `.error`.
+- **Fix commit:** 307c381 (org-admin branch)
+
+## [baseline] pino transport worker thread crashes in Next.js Server Actions
+
+- **Where:** `src/lib/log/index.ts` — `transport: { target: "pino-pretty" }` in dev
+- **Why bad:** pino's `transport` option spawns a `worker_thread` for async pretty-printing. Next.js dev server recycles worker processes between requests, killing the thread and throwing `Error: the worker has exited` inside any Server Action or route handler that calls `log.*`.
+- **Fix:** Replace the transport with pino-pretty as a synchronous stream (`pino(opts, prettyStream)`) — same output, no worker thread.
+- **Fix commit:** ea2eedd (main)
+
