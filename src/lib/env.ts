@@ -19,9 +19,9 @@ const schema = z.object({
   DIRECT_URL: z.string().min(1).optional(),
 
   // AI
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-6"),
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
 
   // App

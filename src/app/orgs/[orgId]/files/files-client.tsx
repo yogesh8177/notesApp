@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/browser";
 import { FILES_BUCKET } from "@/lib/files/constants";
@@ -40,11 +40,7 @@ export function FilesClient({ orgId }: { orgId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    void refreshFiles();
-  }, [orgId]);
-
-  async function refreshFiles() {
+  const refreshFiles = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -64,7 +60,11 @@ export function FilesClient({ orgId }: { orgId: string }) {
     setRole(payload.data.role);
     setCanUpload(payload.data.canUpload);
     setLoading(false);
-  }
+  }, [orgId]);
+
+  useEffect(() => {
+    void refreshFiles();
+  }, [refreshFiles]);
 
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

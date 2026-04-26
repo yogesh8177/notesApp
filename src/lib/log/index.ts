@@ -41,7 +41,6 @@ function buildLogger() {
   if (isProd) {
     return pino(baseOptions);
   }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const pretty = require("pino-pretty") as (opts: Record<string, unknown>) => NodeJS.WritableStream;
   const stream = pretty({ colorize: true, singleLine: true, translateTime: "HH:MM:ss.l" });
   return pino(baseOptions, stream);

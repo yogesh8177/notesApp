@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { acceptInvite } from "@/lib/orgs";
@@ -25,13 +26,13 @@ export default async function AcceptInvitePage({ params }: Props) {
   }
 
   // Error states: expired, wrong user, already accepted, not found.
-  const isMismatch = result.error?.code === "FORBIDDEN";
+  const isMismatch = !result.ok && result.code === "FORBIDDEN";
 
   return (
     <main className="mx-auto max-w-md py-16 px-4 text-center space-y-4">
       <h1 className="text-2xl font-semibold">Invitation</h1>
 
-      <p className="text-destructive">{result.error?.message ?? "Something went wrong."}</p>
+      <p className="text-destructive">{!result.ok ? result.message : "Something went wrong."}</p>
 
       {isMismatch && (
         <form action="/auth/sign-out" method="POST">
@@ -44,9 +45,9 @@ export default async function AcceptInvitePage({ params }: Props) {
         </form>
       )}
 
-      <a href="/orgs" className="block text-sm text-primary hover:underline">
+      <Link href="/orgs" className="block text-sm text-primary hover:underline">
         Go to your organisations
-      </a>
+      </Link>
     </main>
   );
 }
