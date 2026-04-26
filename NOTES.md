@@ -349,3 +349,41 @@ Picked option 2. Plus a top-level `src/app/loading.tsx` for sign-in/orgs-index n
 - `npx tsc --noEmit` — no new errors from these files (pre-existing errors in `lib/supabase/*`, `orgs/invite.ts`, etc. are unrelated).
 - No module-owned paths touched. Module agents can drop their own `loading.tsx` later for tailored fallbacks; this baseline just removes the blank-screen footgun.
 
+---
+
+## 2026-04-27 — Per-module loading states + SubmitButton (parallel module agents)
+
+### Problem
+
+The org-segment `loading.tsx` only fires when navigating *into* the org. Once already inside the org, transitions to deeper segments (notes list → note detail → history, settings, search) still showed a blank screen. Server-action form submits (create note, save note, invite member, etc.) never trigger `loading.tsx` at all — they needed `useFormStatus`-based pending state on submit buttons.
+
+### Decision
+
+Dispatch four parallel module agents — one per worktree — each working only within their owned paths. Orchestrator read the existing page source first to brief them precisely. Two sub-agent dispatch attempts failed immediately (Anthropic usage limit). Orchestrator executed all work directly.
+
+### Work done per module
+
+**notes-core** (`agent/notes-core-loading`):
+- `notes/_components/submit-button.tsx` — `SubmitButton` client component (`useFormStatus`)
+- `notes/loading.tsx` — skeleton for notes list (filter card + note cards)
+- `notes/[noteId]/loading.tsx` — skeleton for note detail (edit card + sharing card + recent versions)
+- `notes/[noteId]/history/loading.tsx` — skeleton for history (diff card + version list)
+- Wired `SubmitButton` into: create note, save/delete note, add/remove share forms
+
+**search** (`agent/search-loading`):
+- `search/loading.tsx` — skeleton for search page (search bar + result cards)
+
+**org-admin** (`agent/org-admin-loading`):
+- `_components/submit-button.tsx` — `SubmitButton` for raw `<button>` elements in org pages
+- `settings/loading.tsx` — skeleton (member list + invite form + danger zone)
+- `new/loading.tsx` — skeleton for create-org form
+- `invite/[token]/loading.tsx` — skeleton for invite accept page
+- Wired `SubmitButton` into: role save, send invite, leave org, create org
+
+**ai-summary** (`agent/ai-summary-loading`):
+- No owned pages exist yet on `main` — module agent has not shipped yet. Nothing to add; worktree branch preserved for when ai-summary ships its pages.
+
+### Commit shape
+
+Each concern is a separate commit per CLAUDE.md rules. SubmitButton → loading.tsx files → wiring → docs.
+

@@ -145,3 +145,38 @@
 
 **Verified:** `npx tsc --noEmit` clean for new files.
 
+---
+
+## 2026-04-27 — Per-module loading states (parallel agent plan + orchestrator fallback)
+
+### Parallel agent dispatch
+
+**Plan:** dispatch 4 background sub-agents in parallel, one per module worktree, to add `loading.tsx` files and `SubmitButton` client components within each module's owned paths. This respects CLAUDE.md module ownership — each agent touches only its segment.
+
+**Attempt 1:** dispatched all 4 simultaneously. All hit Anthropic usage limit immediately (0–1 tool calls each, no output). Reset waited.
+
+**Attempt 2 (after reset):** same result — all 4 agents returned "hit your limit" before executing any tools.
+
+### Orchestrator fallback
+
+Orchestrator read every relevant page source directly (`notes/page.tsx`, `notes/[noteId]/page.tsx`, `history/page.tsx`, `settings/page.tsx`, `new/page.tsx`, `invite/[token]/page.tsx`) then executed all work inline.
+
+### What was right
+
+- Parallel agent architecture was correct — 4 independent modules, no shared state, natural parallelism. Would have worked if quota allowed.
+- Reading source before writing was essential — the org-admin pages used raw `<button>` elements (not the `Button` component), so a generic `Button`-based `SubmitButton` would not have worked. The `SubmitButton` for org-admin was built as a plain `<button>` wrapper instead.
+- ai-summary worktree created but no work added — that module has no shipped pages on `main` yet, so there was nothing to add. Documented honestly.
+
+### What was wrong
+
+- First dispatch was attempted without reading existing page content — only briefed agents from file-listing output. That was sufficient for `loading.tsx` (layout mirrors page structure) but would have misfired on `SubmitButton` wiring had agents run.
+
+### Commits per module
+
+| Module | Branch | Commits |
+|---|---|---|
+| notes-core | agent/notes-core-loading | 5 (SubmitButton, 3× loading.tsx, wiring) |
+| search | agent/search-loading | 1 (loading.tsx) |
+| org-admin | agent/org-admin-loading | 5 (SubmitButton, 3× loading.tsx, wiring) |
+| ai-summary | agent/ai-summary-loading | 1 (docs only — no pages to instrument) |
+
