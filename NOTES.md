@@ -238,3 +238,9 @@ baseline source files were edited on `main`.
 - Anthropic is primary; OpenAI is fallback on any Anthropic upstream error or timeout over 30 seconds.
 - Provider outputs are parsed against the zod summary schema. Parse/validation failures retry once on the same provider before that provider is considered failed.
 - If both providers fail, the wrapper throws a typed `SummarizeProvidersError` that carries per-provider failure details for the route handler to persist and return as an `UPSTREAM` failure.
+
+### Step 5: rate limiting
+
+- Added `src/lib/ai/rate-limit.ts`.
+- Implemented the required in-memory per-user token bucket at 5 requests per 60 seconds.
+- Stored limiter state on `globalThis` so development reloads do not reset the bucket on every module reload inside the same server process.
