@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.github
+.vscode
+.idea
+.env
+.env.*
+!.env.example
+*.log
+README.md
+NOTES.md
+AI_USAGE.md
+BUGS.md
+REVIEW.md
+docs
+coverage
