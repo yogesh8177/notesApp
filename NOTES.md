@@ -231,3 +231,10 @@ baseline source files were edited on `main`.
 - Added `src/lib/ai/prompt.ts`.
 - The prompt keeps user note content inside explicit `<note>` delimiters and instructs the model to treat that content as data rather than instructions.
 - The prompt only interpolates `title` and `content`; it does not include org names, user identifiers, or any other cross-tenant context.
+
+### Step 4: provider wrapper
+
+- Added `src/lib/ai/provider.ts` with a single `summarize({ title, content })` entrypoint.
+- Anthropic is primary; OpenAI is fallback on any Anthropic upstream error or timeout over 30 seconds.
+- Provider outputs are parsed against the zod summary schema. Parse/validation failures retry once on the same provider before that provider is considered failed.
+- If both providers fail, the wrapper throws a typed `SummarizeProvidersError` that carries per-provider failure details for the route handler to persist and return as an `UPSTREAM` failure.
