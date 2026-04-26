@@ -37,6 +37,19 @@ By default (`pnpm seed:large` → `SEED_NOTE_COUNT=10000`):
 - **Files:** ~100 files total. ~80% attached to a note, ~20% org-level.
   Mix of MIME types (pdf, png, txt, md). Use small placeholder bytes.
 
+## Data Semantics (CRITICAL for AI Summary & Search)
+
+**DO NOT USE `faker.lorem`, `faker.hacker.phrase`, or pure gibberish for note titles or content.** The reviewers will use this data to test the "AI Summary" and "Search" features. If the data is gibberish, the AI summarizer will fail.
+
+- **Titles:** Must be realistic corporate events to guarantee semantic overlaps for search testing. Use combinations of small arrays. 
+  - *Example arrays:* Prefixes (`URGENT:`, `Draft:`), Departments (`Engineering`, `HR`), and Topics (`Q3 Roadmap`, `Incident Report`).
+  - *Result:* "URGENT: Engineering - Incident Report"
+- **Content Bodies:** Must be structured like real wiki documents so the AI summarizer can extract meaningful action items.
+  - Include an introductory sentence, a technical detail, and a markdown list of 1-3 specific action items.
+  - *Example:* "Investigate high latency. - [ ] Roll back deployment."
+  - **Tags:** Do not generate random dictionary words for tags. Create a strict array of 15-20 corporate tags (e.g., `Urgent`, `Planning`, `Q3`, `Infrastructure`, `Frontend`) and assign 1-3 of these to each note. This ensures the required overlapping tags across different orgs.
+  - **Version State Changes:** The seed data must demonstrate visible state changes across versions. When generating a `note_versions` row for an update, explicitly instruct the generator to alter the body content slightly (e.g., change an action item from `[ ]` to `[x]`, or append a "Resolution" sentence).
+
 ## Constraints
 
 - **Idempotent-ish:** `setFakerSeed(SEED_RNG)` so reruns are predictable.

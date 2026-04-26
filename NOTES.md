@@ -249,3 +249,118 @@ committing; found three correctness issues and one missing feature.
 - `0e58a2e` feat(search): tsvector + trgm ranked query builder with visibility predicate
 - `143fa7b` feat(search): GET /api/search route handler
 - `9e5fc7a` feat(search): search results page — filters, snippet highlight, pagination
+## 2026-04-26 — Baseline vs worktree clarification (orchestrator)
+
+### Answer
+
+Module implementation work from the dispatched agents is landing in the
+non-baseline worktrees and branches, not in the frozen baseline worktree on
+`main`.
+
+### Important exception
+
+`main` still carries orchestration-doc edits made by the orchestrator:
+
+- `NOTES.md`
+- `AI_USAGE.md`
+
+Those are coordination artifacts, not module product code.
+
+### Current baseline-side drift to inspect, not overwrite
+
+- `docs/modules/seed-10k.md` is currently modified in the baseline worktree.
+  I did not revert it. It now contains explicit data-semantics guidance that
+  was not available to the first `seed-10k` dispatch and needs to be treated
+  as the current contract.
+
+## 2026-04-26 — Guide refresh and re-dispatch (orchestrator)
+
+### New information
+
+The baseline now contains module guides for:
+
+- `docs/modules/ai-summary.md`
+- `docs/modules/org-admin.md`
+- `docs/modules/deploy-ops.md`
+- `docs/modules/seed-10k.md`
+
+These guides were not available to the first pass of some module workers, so
+their original blocker conclusions are stale.
+
+### Actions
+
+- Resumed `Leibniz` on `agent/ai-summary` with the explicit `ai-summary` guide.
+- Resumed `Planck` on `agent/org-admin` with the explicit `org-admin` guide.
+- Marked `Ampere` and `Harvey` for follow-up alignment against the now-present
+  `seed-10k` and `deploy-ops` guides.
+- `Avicenna` (`notes-core`) is still the long-running active implementation
+  worker and remains isolated in `/private/tmp/notes-app-notes-core`.
+
+## 2026-04-26 — notes-core takeover (Avicenna worktree)
+
+### What happened
+- All 6 worktrees synced to main before any work started.
+- Surveyed Avicenna's output: service.ts (796 lines) and route files were each committed as a single massive commit — violated one-concern-per-commit rule.
+- Reset branch to after `errors + http` commit (dc9941f), then rebuilt all of Avicenna's work with proper granularity.
+
+### Decisions
+- Split service.ts into 4 focused modules: `queries.ts` (internal helpers), `crud.ts` (list/detail/create/update/delete), `shares.ts` (upsert/remove), `history.ts` (version snapshots).
+- Baked two bug fixes directly into the right commits rather than adding fix-commits on top:
+  - `isRedirectError` rethrow → inside server actions (not a separate fix commit)
+  - `SELECT ... FOR UPDATE` + 23505→CONFLICT mapping → baked into crud.ts and shares.ts
+  - Soft-delete no longer writes a redundant version row
+- Route handlers split 1-per-concern: list/create, detail/update/delete, shares, history
+- UI split: components.tsx → actions.ts → list page.tsx → detail page.tsx → history page.tsx
+
+### Outcome
+18 commits from dc9941f to 68caf28, each reviewable in isolation.
+
+
+## 2026-04-26 — org-admin implementation (Planck worktree)
+
+### What happened
+- Planck (Codex agent) committed 3 WIP entries that contained only doc updates and a stale Drizzle migration (0000_*.sql) — which violates the frozen contract on drizzle/ files. No actual product code was shipped.
+- Discarded all 3 WIP commits (git reset --hard f09bf47), then implemented org-admin from scratch.
+
+### Architecture decisions
+- Split service layer into focused single-responsibility files: create.ts / invite.ts / roles.ts / members.ts — one file per concern, mirrors the notes-core split pattern. Each is its own commit.
+- `createOrg` uses the Drizzle `db` client directly (service-role equivalent via DATABASE_URL) because the creator has no membership row yet at INSERT time — RLS on memberships would block a user-scoped client.
+- `inviteMember` stores the invite link in audit_log as the primary delivery mechanism. Email sending is left as a configurable hook (log.info shows the link; when EMAIL_DESTINATION is wired, the function extends here).
+- `acceptInvite` checks email match server-side and returns FORBIDDEN with a sign-out option — not just a client-side guard.
+- `changeRole` last-owner guard: counts owners AFTER the proposed change conceptually; if `count(role='owner') <= 1` and target is being demoted from owner, return 422.
+- Org switcher is a client component that sets only an informational cookie — auth always uses URL [orgId] segment, never the cookie for permission decisions.
+
+### What's still missing (nice-to-have)
+- Org name/slug edit on the settings page (read the spec again — not required for this build)
+- Email send integration when EMAIL_DESTINATION env is set
+
+
+## 2026-04-26 — Runtime bug fixes (post-PR-raise)
+
+### Bugs found during manual testing
+
+**1. 23503 FK on orgs.created_by**
+- Cause: auth.users exists but public.users mirror row does not (trigger only fires on INSERT into auth.users; dev/dashboard users pre-date the migration).
+- Fix: upsert public.users row at the start of createOrg transaction (onConflictDoNothing). Commit a67a74b on agent/org-admin.
+
+**2. pino "the worker has exited"**
+- Cause: pino transport option spawns a worker_thread; Next.js dev server recycles workers between requests, killing it mid-flight.
+- Fix: use pino-pretty as synchronous stream (pino(opts, stream)) in dev instead of transport. No worker thread. Production path unchanged. Commit ea2eedd on main.
+
+**3. toResponse() in server actions**
+- Cause: server actions returned toResponse(ok({id})) — a NextResponse object. Page reads result.ok (NextResponse.ok = true for 2xx) then crashes on result.data.id because NextResponse has no .data field.
+- Fix: stripped toResponse() from all three org-admin action files. Server actions return raw Result<T>. Commit 307c381 on agent/org-admin.
+
+### Design rule clarified
+- toResponse() → route handlers only (converts Result<T> to HTTP response for JSON API callers)
+- Raw Result<T> → server actions (returned directly, page reads .ok / .data / .error)
+
+
+## 2026-04-26 — isRedirectError fix (post-merge)
+
+- PR for notes-core was merged before the `isRedirectError` fix landed on the branch.
+- Fix cherry-picked from db1b195 → d67fdb9 directly onto main.
+- Root cause: `next/dist/client/components/redirect` does not export `isRedirectError` as a public API in Next.js 15 — resolves to `undefined` silently, throws at call site.
+- Replacement: inline digest check (`error.digest.startsWith("NEXT_REDIRECT")`) — version-agnostic, no internal import dependency.
+- Rule going forward: never import from `next/dist/**` — those are internal bundle paths with no stability guarantees.
+
