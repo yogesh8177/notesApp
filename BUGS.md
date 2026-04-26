@@ -38,3 +38,5 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 ---
 
 ## Findings
+- Updated seed-10k.md in main branch, worktree was unaware of it thus it could not implement the updated plan. Once rebased with main worktree now has updated context.
+- org-admin agent stopped and raised an issue where it didn't have permission to make changes for org switcher implementation, upon review permission was granted as it does own that surface area.
