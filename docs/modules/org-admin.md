@@ -15,6 +15,7 @@ leave-org. Org switcher in the header.
 - `src/app/orgs/invite/[token]/**` — accept-invite page.
 - `src/app/orgs/[orgId]/settings/**` — org settings (name, slug, members,
   invites).
+- `src/app/orgs/[orgId]/layout.tsx` - org switcher with cookie write + `org.switch` audit
 
 ## Frozen — DO NOT MODIFY
 

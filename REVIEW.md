@@ -76,6 +76,18 @@
 *orchestrator, deep:*
 
 ### Notes core
+
+Using pessimistic row-level locking (SELECT FOR UPDATE) for version assignment.
+
+Trade-offs:
+- Concurrent writes to the same note are serialized; all writes succeed and are assigned increasing versions.
+- Avoids unique (note_id, version) conflicts and eliminates race conditions in version computation.
+- Does not reject stale edits — older client states are still accepted and stored as newer versions.
+- Keeps logic simple and avoids client-side conflict handling.
+
+Rationale:
+- Editing the same note concurrently is expected to be low-frequency, so row-level locking is unlikely to be a scalability bottleneck.
+- If higher contention or real-time collaboration requirements emerge, we can switch to optimistic locking with version checks to surface conflicts to the client. This would also avoid stale edits from older version user trying to edit.
 *pending — notes-core agent merge:*
 
 ### Search
@@ -88,6 +100,7 @@
 *pending:*
 
 ### Org admin
+Found a conflict for implementing org switcher in the baseline vs agent scoped code change path. Allowed permission for agent implementing org functionality to edit required file under orgs>[orgId]>layout.tsx directory.
 *pending:*
 
 ### Seed data
@@ -95,3 +108,40 @@
 
 ### Deploy / ops
 *pending:*
+---
+
+## Post-implementation review (2026-04-26)
+
+### notes-core (Avicenna)
+
+**Reviewed deeply:**
+- `src/lib/notes/crud.ts` — permission delegation to assertCanReadNote/WriteNote correct; visibility predicate for the list query conservatively written (private=author-only, shared=author+grantees). Checked the `OR` structure doesn't accidentally admit other users' private notes. ✅
+- `updateNote` concurrency — confirmed `SELECT … FOR UPDATE` is inside the transaction before `currentVersion + 1` is computed. ✅
+- `upsertNoteShare` race — same FOR UPDATE pattern, locked before visibility promote. ✅
+- Server actions — verified `isRedirectError` rethrow present in all 5 catch blocks. ✅
+- `deleteNote` — soft-delete only sets `deletedAt`, no redundant version row bump. ✅
+- `errors.ts` `isUniqueViolation` — checks SQLSTATE 23505 correctly. ✅
+- Route handlers — all use `requireApiUser`, validate with module schemas, return `toResponse`. ✅
+
+**Sampled:**
+- History page — permission check at query time (not at version creation time) confirmed. ✅
+- diff.ts — line-based, title and content diffed independently. ✅
+
+**Not reviewed / future TODOs:**
+- No automated tests for permission matrix (private/org/shared × role combos). Flag for post-merge.
+- `listNotesForUser` uses `ilike` for keyword search — search module will own proper tsvector search; this is acceptable as a list-page filter.
+
+---
+
+### org-admin (Planck)
+
+**Reviewed deeply:**
+- `create.ts` — slug uniqueness check before INSERT (not relying on 23505 catch) ✅; owner membership inserted in same transaction ✅; service-role client used because creator has no membership yet ✅.
+- `invite.ts` — `acceptInvite` email match checked server-side (not just client-side) ✅; onConflictDoNothing makes re-acceptance idempotent ✅; expiry check before membership insert ✅.
+- `roles.ts` — last-owner guard: counts `role='owner'` rows, returns 422 if ≤1 ✅; self-demotion allowed when other owners remain ✅.
+- `org-switcher.tsx` — confirmed cookie is informational only, never read for auth ✅. **Bug found and fixed (fd552e7):** server-only `audit()` imported in `"use client"` component — would cause Next.js build failure.
+
+**Not reviewed / future TODOs:**
+- Invite email sending not wired (intentional — link goes to audit_log). Should add env-gated email hook before production.
+- Org name/slug edit not implemented on settings page (not required by spec, flagged for follow-up).
+

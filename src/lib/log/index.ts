@@ -14,7 +14,7 @@ import { env } from "@/lib/env";
  */
 const isProd = env.NODE_ENV === "production";
 
-export const log = pino({
+const baseOptions: pino.LoggerOptions = {
   level: env.LOG_LEVEL,
   base: {
     service: "notes-app",
@@ -31,14 +31,22 @@ export const log = pino({
     ],
     censor: "[redacted]",
   },
-  ...(isProd
-    ? {}
-    : {
-        transport: {
-          target: "pino-pretty",
-          options: { colorize: true, singleLine: true, translateTime: "HH:MM:ss.l" },
-        },
-      }),
-});
+};
+
+// In dev, pipe through pino-pretty as a synchronous stream rather than using
+// the `transport` option. `transport` spawns a worker_thread that Next.js dev
+// server recycles between requests, causing "the worker has exited" errors in
+// Server Actions and route handlers. A synchronous stream has no worker thread.
+function buildLogger() {
+  if (isProd) {
+    return pino(baseOptions);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pretty = require("pino-pretty") as (opts: Record<string, unknown>) => NodeJS.WritableStream;
+  const stream = pretty({ colorize: true, singleLine: true, translateTime: "HH:MM:ss.l" });
+  return pino(baseOptions, stream);
+}
+
+export const log = buildLogger();
 
 export type Logger = typeof log;
