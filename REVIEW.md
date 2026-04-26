@@ -76,6 +76,18 @@
 *orchestrator, deep:*
 
 ### Notes core
+
+Using pessimistic row-level locking (SELECT FOR UPDATE) for version assignment.
+
+Trade-offs:
+- Concurrent writes to the same note are serialized; all writes succeed and are assigned increasing versions.
+- Avoids unique (note_id, version) conflicts and eliminates race conditions in version computation.
+- Does not reject stale edits — older client states are still accepted and stored as newer versions.
+- Keeps logic simple and avoids client-side conflict handling.
+
+Rationale:
+- Editing the same note concurrently is expected to be low-frequency, so row-level locking is unlikely to be a scalability bottleneck.
+- If higher contention or real-time collaboration requirements emerge, we can switch to optimistic locking with version checks to surface conflicts to the client. This would also avoid stale edits from older version user trying to edit.
 *pending — notes-core agent merge:*
 
 ### Search
