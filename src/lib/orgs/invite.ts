@@ -6,7 +6,7 @@ import { orgInvites } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { requireOrgRole } from "@/lib/auth/org";
 import { audit } from "@/lib/log/audit";
-import { err, fromZod, ok, toResponse } from "@/lib/validation/result";
+import { err, fromZod, ok } from "@/lib/validation/result";
 import { log } from "@/lib/log";
 import { env } from "@/lib/env";
 import { inviteMemberSchema, type InviteMemberInput } from "./schemas";
@@ -23,7 +23,7 @@ export async function inviteMember(orgId: string, input: InviteMemberInput) {
   await requireOrgRole(orgId, "admin");
   const user = await requireUser();
   const parsed = inviteMemberSchema.safeParse(input);
-  if (!parsed.success) return toResponse(fromZod(parsed.error));
+  if (!parsed.success) return fromZod(parsed.error);
 
   const { email, role } = parsed.data;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -48,7 +48,7 @@ export async function inviteMember(orgId: string, input: InviteMemberInput) {
   // Invite link is persisted in audit_log. Email sending is opt-in via env.
   log.info({ orgId, email, role }, "org invite created — link in audit_log");
 
-  return toResponse(ok({ inviteLink }));
+  return ok({ inviteLink });
 }
 
 /**
@@ -73,14 +73,12 @@ export async function acceptInvite(token: string) {
     .where(eq(orgInvites.token, token))
     .limit(1);
 
-  if (!invite) return toResponse(err("NOT_FOUND", "Invite not found or already used."));
-  if (invite.acceptedAt) return toResponse(err("CONFLICT", "This invite has already been accepted."));
-  if (invite.expiresAt < new Date()) return toResponse(err("UNPROCESSABLE", "This invite has expired."));
+  if (!invite) return err("NOT_FOUND", "Invite not found or already used.");
+  if (invite.acceptedAt) return err("CONFLICT", "This invite has already been accepted.");
+  if (invite.expiresAt < new Date()) return err("UNPROCESSABLE", "This invite has expired.");
 
   if (invite.email !== user.email) {
-    return toResponse(
-      err("FORBIDDEN", `This invite is for ${invite.email}. You are signed in as ${user.email}.`),
-    );
+    return err("FORBIDDEN", `This invite is for ${invite.email}. You are signed in as ${user.email}.`);
   }
 
   const { memberships } = await import("@/lib/db/schema");
@@ -105,5 +103,5 @@ export async function acceptInvite(token: string) {
     metadata: { email: invite.email, role: invite.role },
   });
 
-  return toResponse(ok({ orgId: invite.orgId }));
+  return ok({ orgId: invite.orgId });
 }

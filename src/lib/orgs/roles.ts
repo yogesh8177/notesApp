@@ -7,7 +7,7 @@ import { memberships } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { requireOrgRole } from "@/lib/auth/org";
 import { audit } from "@/lib/log/audit";
-import { err, fromZod, ok, toResponse } from "@/lib/validation/result";
+import { err, fromZod, ok } from "@/lib/validation/result";
 import { changeRoleSchema, type ChangeRoleInput } from "./schemas";
 
 /**
@@ -21,7 +21,7 @@ export async function changeRole(orgId: string, input: ChangeRoleInput) {
   await requireOrgRole(orgId, "admin");
   const user = await requireUser();
   const parsed = changeRoleSchema.safeParse(input);
-  if (!parsed.success) return toResponse(fromZod(parsed.error));
+  if (!parsed.success) return fromZod(parsed.error);
 
   const { userId: targetUserId, role: newRole } = parsed.data;
 
@@ -31,7 +31,7 @@ export async function changeRole(orgId: string, input: ChangeRoleInput) {
     .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, targetUserId)))
     .limit(1);
 
-  if (!current) return toResponse(err("NOT_FOUND", "Member not found in this organisation."));
+  if (!current) return err("NOT_FOUND", "Member not found in this organisation.");
 
   const oldRole = current.role;
 
@@ -42,9 +42,7 @@ export async function changeRole(orgId: string, input: ChangeRoleInput) {
       .where(and(eq(memberships.orgId, orgId), eq(memberships.role, "owner")));
 
     if (ownerCount <= 1) {
-      return toResponse(
-        err("UNPROCESSABLE", "Cannot demote the last owner. Promote another member to owner first."),
-      );
+      return err("UNPROCESSABLE", "Cannot demote the last owner. Promote another member to owner first.");
     }
   }
 
@@ -64,7 +62,7 @@ export async function changeRole(orgId: string, input: ChangeRoleInput) {
     metadata: { targetUserId, from: oldRole, to: newRole },
   });
 
-  return toResponse(ok({}));
+  return ok({});
 }
 
 /**
@@ -81,7 +79,7 @@ export async function leaveOrg(orgId: string) {
     .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, user.id)))
     .limit(1);
 
-  if (!current) return toResponse(err("NOT_FOUND", "You are not a member of this organisation."));
+  if (!current) return err("NOT_FOUND", "You are not a member of this organisation.");
 
   if (current.role === "owner") {
     const [{ ownerCount }] = await db
@@ -90,9 +88,7 @@ export async function leaveOrg(orgId: string) {
       .where(and(eq(memberships.orgId, orgId), eq(memberships.role, "owner")));
 
     if (ownerCount <= 1) {
-      return toResponse(
-        err("UNPROCESSABLE", "You are the last owner. Transfer ownership before leaving."),
-      );
+      return err("UNPROCESSABLE", "You are the last owner. Transfer ownership before leaving.");
     }
   }
 
@@ -110,5 +106,5 @@ export async function leaveOrg(orgId: string) {
   });
 
   revalidatePath("/orgs");
-  return toResponse(ok({}));
+  return ok({});
 }
