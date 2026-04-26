@@ -2,7 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { isRedirectError } from "next/dist/client/components/redirect";
+/** Next.js stamps all redirect() throws with this digest prefix. */
+function isRedirectError(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "digest" in e &&
+    typeof (e as { digest: unknown }).digest === "string" &&
+    (e as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
 import { requireUser } from "@/lib/auth/session";
 import {
   createNote,
