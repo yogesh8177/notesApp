@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth/session";
+import { SubmitButton } from "@/app/orgs/_components/submit-button";
 import { getMembership } from "@/lib/auth/org";
 import { listMembers, listPendingInvites, inviteMember, changeRole, leaveOrg } from "@/lib/orgs";
 import { eq } from "drizzle-orm";
@@ -76,9 +77,9 @@ export default async function OrgSettingsPage({ params }: Props) {
                     <option value="member">Member</option>
                     <option value="viewer">Viewer</option>
                   </select>
-                  <button type="submit" className="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded hover:opacity-80">
+                  <SubmitButton className="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded hover:opacity-80" pendingText="…">
                     Save
-                  </button>
+                  </SubmitButton>
                 </form>
               ) : (
                 <span className="text-xs capitalize text-muted-foreground">{m.role}</span>
@@ -112,9 +113,9 @@ export default async function OrgSettingsPage({ params }: Props) {
                 <option value="viewer">Viewer</option>
               </select>
             </div>
-            <button type="submit" className="bg-primary text-primary-foreground rounded px-4 py-2 text-sm font-medium hover:opacity-90">
+            <SubmitButton className="bg-primary text-primary-foreground rounded px-4 py-2 text-sm font-medium hover:opacity-90" pendingText="Sending…">
               Send invite
-            </button>
+            </SubmitButton>
           </form>
 
           {pendingInvites.length > 0 && (
@@ -138,9 +139,9 @@ export default async function OrgSettingsPage({ params }: Props) {
       <section>
         <h2 className="text-lg font-medium mb-2">Danger zone</h2>
         <form action={handleLeave}>
-          <button type="submit" className="text-sm text-destructive border border-destructive rounded px-4 py-2 hover:bg-destructive/10">
+          <SubmitButton className="text-sm text-destructive border border-destructive rounded px-4 py-2 hover:bg-destructive/10" pendingText="Leaving…">
             Leave organisation
-          </button>
+          </SubmitButton>
         </form>
       </section>
     </main>

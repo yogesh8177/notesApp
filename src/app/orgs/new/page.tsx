@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { createOrg } from "@/lib/orgs";
+import { SubmitButton } from "@/app/orgs/_components/submit-button";
 
 export const metadata = { title: "New Organisation" };
 
@@ -55,12 +56,9 @@ export default async function NewOrgPage() {
           />
           <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, hyphens only.</p>
         </div>
-        <button
-          type="submit"
-          className="w-full bg-primary text-primary-foreground rounded py-2 text-sm font-medium hover:opacity-90"
-        >
+        <SubmitButton className="w-full bg-primary text-primary-foreground rounded py-2 text-sm font-medium hover:opacity-90" pendingText="Creating…">
           Create organisation
-        </button>
+        </SubmitButton>
       </form>
     </main>
   );
