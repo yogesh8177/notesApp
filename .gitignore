@@ -1,0 +1,47 @@
+# deps
+node_modules
+.pnp
+.pnp.js
+
+# testing
+coverage
+
+# next
+.next/
+out/
+build
+dist
+
+# misc
+.DS_Store
+*.pem
+.vscode/
+.idea/
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env
+.env
+.env*.local
+.env.production
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# drizzle generated SQL drafts
+drizzle/.cache
+
+# supabase
+supabase/.branches
+supabase/.temp
+
+# logs
+logs
+*.log
