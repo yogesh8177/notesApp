@@ -31,13 +31,10 @@ export const searchFiltersSchema = searchBaseSchema.superRefine((value, ctx) => 
   validateDateRange(value, ctx);
 });
 
-export const searchRequestSchema = searchBaseSchema
-  .extend({
-    q: z.string().trim().min(1).max(200),
-  })
-  .superRefine((value, ctx) => {
-    validateDateRange(value, ctx);
-  });
+// q is optional — filter-only searches (tag, author, date) are valid without a text query.
+export const searchRequestSchema = searchBaseSchema.superRefine((value, ctx) => {
+  validateDateRange(value, ctx);
+});
 
 export type SearchVisibilityFilter = (typeof SEARCH_VISIBILITIES)[number];
 export type SearchFilters = z.infer<typeof searchFiltersSchema>;

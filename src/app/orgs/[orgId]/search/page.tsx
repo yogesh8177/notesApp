@@ -66,7 +66,7 @@ export default async function SearchPage({
     listSearchTags(orgId),
   ]);
 
-  const shouldSearch = Boolean(filters.q);
+  const shouldSearch = hasActiveSearchFilters(filters);
   const parsedRequest = shouldSearch ? parseSearchRequest(rawSearchParams, orgId) : null;
   const response = parsedRequest
     ? await searchNotes(parsedRequest, {
@@ -217,7 +217,7 @@ export default async function SearchPage({
       {!shouldSearch ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
-            Enter a query to search across readable notes. Prefix with{" "}
+            Enter a query or select a filter to browse readable notes. Prefix with{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">#tagname</code> for
             exact tag search.
           </CardContent>
@@ -262,7 +262,7 @@ export default async function SearchPage({
               className="underline underline-offset-4"
               href={`/api/search?${new URLSearchParams({
                 orgId,
-                q: response.query.q,
+                ...(response.query.q ? { q: response.query.q } : {}),
                 visibility: response.query.visibility,
                 ...(response.query.authorId ? { authorId: response.query.authorId } : {}),
                 ...(response.query.tag ? { tag: response.query.tag } : {}),

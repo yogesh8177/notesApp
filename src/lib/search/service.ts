@@ -244,6 +244,71 @@ async function searchByFts(
 }
 
 /**
+ * Filter-only browse: no text query, just apply the base conditions (tag, author,
+ * visibility, date range) and sort by recency. Used when the user submits filters
+ * without a search term.
+ */
+async function browseFiltered(
+  input: SearchRequest,
+  viewer: SearchViewer,
+): Promise<SearchResponse> {
+  const pageSize = input.pageSize;
+  const offset = (input.page - 1) * pageSize;
+  const aggregatedTags = sql<string[]>`array_remove(array_agg(distinct ${tags.name}), null)`;
+
+  const rows = await db
+    .select({
+      id: notes.id,
+      title: notes.title,
+      snippet: sql<string>`left(coalesce(${notes.content}, ''), 180)`,
+      visibility: notes.visibility,
+      authorId: notes.authorId,
+      authorName: sql<string>`coalesce(${users.displayName}, ${users.email})`,
+      updatedAt: notes.updatedAt,
+      score: sql<number>`0`,
+      tags: aggregatedTags,
+    })
+    .from(notes)
+    .innerJoin(users, eq(users.id, notes.authorId))
+    .leftJoin(noteTags, eq(noteTags.noteId, notes.id))
+    .leftJoin(tags, eq(tags.id, noteTags.tagId))
+    .where(and(...buildBaseConditions(input, viewer)))
+    .groupBy(
+      notes.id,
+      notes.title,
+      notes.content,
+      notes.visibility,
+      notes.authorId,
+      notes.updatedAt,
+      users.displayName,
+      users.email,
+    )
+    .orderBy(desc(notes.updatedAt), desc(notes.id))
+    .limit(pageSize + 1)
+    .offset(offset);
+
+  const hasNextPage = rows.length > pageSize;
+
+  return {
+    orgId: input.orgId,
+    page: input.page,
+    pageSize,
+    hasNextPage,
+    query: {
+      q: input.q,
+      visibility: input.visibility,
+      authorId: input.authorId,
+      tag: input.tag,
+      from: input.from,
+      to: input.to,
+      page: input.page,
+      pageSize: input.pageSize,
+    },
+    results: (rows.slice(0, pageSize) as SearchRow[]).map(toResultItem),
+  };
+}
+
+/**
  * Tag-prefix path: when `input.q` starts with `#`, strip the `#` and look up
  * notes by `note_tags.tag_id` instead of running FTS. This gives exact tag
  * search with correct pagination and no relevance ranking needed.
@@ -346,8 +411,11 @@ export async function searchNotes(
 
   let result: SearchResponse;
 
+  // No text query — run a filter-only browse sorted by recency.
+  if (!input.q) {
+    result = await browseFiltered(input, viewer);
+  } else if (input.q.startsWith("#")) {
   // Tag-prefix path: "#tagname" → skip FTS, filter by note_tags.tag_id.
-  if (input.q.startsWith("#")) {
     const tagName = input.q.slice(1).trim();
     result = tagName
       ? await searchByTag(tagName, input, viewer)
@@ -367,7 +435,7 @@ export async function searchNotes(
     resourceType: "search",
     resourceId: input.orgId,
     metadata: {
-      q: input.q.slice(0, 256),
+      q: (input.q ?? "").slice(0, 256),
       resultCount: result.results.length,
       latencyMs: Date.now() - startedAt,
       page: input.page,
