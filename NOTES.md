@@ -537,6 +537,50 @@ Full read of all query/mutation paths. App is multi-tenant safe:
 - Search enforces `eq(notes.orgId, input.orgId)` + `getMembership` check + `buildReadablePredicate` SQL
 - Only active bug was `getSummaryMatchingNoteIds` missing org filter (fixed, BUGS.md)
 
+## 2026-04-27 — seed-10k: worktree rebased + implementation reviewed (orchestrator)
+
+### Context
+
+The `agent/seed-10k` worktree at `/private/tmp/notes-app-seed-10k` had a single WIP commit (`42cafc2`) from the previous session's `Ampere` agent. It was 6 commits behind `main` (doc and production fixes had landed on main after the seed branch diverged). The seed files themselves were complete — the WIP commit contained full implementations of both `factories.ts` and `run.ts`.
+
+### What was done
+
+1. **Rebase** — `agent/seed-10k` rebased onto `main`. Only conflict was `NOTES.md` (doc-only). Resolved by taking main's version (`git checkout --theirs`), preserving the seed implementation cleanly.
+2. **WIP commit split** — reset the single WIP commit and re-committed as 3 atomic commits per the module guide's conventions:
+   - `e91b1c3` `feat(seed): factories`
+   - `c47a0dd` `feat(seed): run`
+   - `9ce82df` `docs(seed): NOTES and AI_USAGE`
+3. **Type-check** — `tsc --noEmit` clean on the worktree.
+4. **Force-push** — `--force-with-lease` to `origin/agent/seed-10k` after rebase rewrote history.
+
+### Key design decisions in the seed
+
+**Why no faker.lorem for content:**
+The spec explicitly bans it. Graders use AI summary and search against this data. If content is gibberish, the AI summarizer produces garbage summaries and reviewers can't tell whether search is actually working. Corporate-style titles and structured bodies are necessary for meaningful end-to-end testing.
+
+**Title generation strategy:**
+`NOTE_SUBJECTS` × `TITLE_QUALIFIERS` combinatorics guarantee predictable, searchable titles ("Weekly Sync Q3", "Launch Checklist Sprint"). The same subject repeats across orgs intentionally — this is the primary test for search tenant isolation: searching "launch checklist" should scope to the user's org only.
+
+**Structured body format (`makeStructuredBody`):**
+Three sections: `## Context` (2–4 sentences of realistic prose), `## Decisions` (3 bullet points from a fixed pool), `## Next` (2 action items as `[ ]` markdown checkboxes). Version updates change `[ ]` to `[x]` and append a Resolution line. This makes the diff viewer show meaningful changes per version, which is required for the version history feature review.
+
+**Tag strategy:**
+5 required overlap tags (`roadmap`, `todo`, `meeting`, `retro`, `customer`) are guaranteed in every org. These overlap deliberately — graders can test that `#roadmap` tag search scopes to the current org only. Each org also gets org-specific specialist tags (infra/api/observability for Engineering orgs, ux/research/prototype for Design orgs, etc.) so tag facets look realistic.
+
+**Idempotency (cleanup-first pattern):**
+Seed is not fully idempotent (it can't reuse existing user IDs), so it's cleanup-then-reseed. Cleanup order matters: storage objects first (requires orgId FK for the query), then DB rows (org cascade handles notes/memberships/etc.), then auth users. The email prefix + org slug prefix pattern makes prior seed rows identifiable without needing a seed run ID.
+
+**Batching and transactions:**
+500-row batches keep Postgres statement memory manageable for 10k notes. All DB inserts run inside a single transaction — a failure rolls back everything. Storage uploads are outside the transaction (can't roll back object storage) but the catch block removes them. Upload batches are 100 concurrent requests (smaller than row batches) because each is a network call to Supabase Storage.
+
+**`waitForProfiles` pattern:**
+The `on_auth_user_created` trigger is synchronous in most Supabase configurations but the SDK's `admin.createUser` returns before the trigger runs in some edge cases. The polling loop (250ms interval, 10s timeout) avoids FK violations when inserting membership rows before the `public.users` mirror row exists.
+
+**File body content:**
+Real minimal valid file bodies: a 1×1 PNG (base64 constant), a minimal valid PDF with a title in the content stream, and markdown/txt as UTF-8 text. These are small enough for fast upload but valid enough that a MIME sniff won't reject them.
+
+---
+
 ## 2026-04-27 — Search filter-only bug fix + observability gaps (orchestrator)
 
 ### Search: filter-only searches were broken
