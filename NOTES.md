@@ -546,3 +546,29 @@ The previous performance optimisation in `src/lib/auth/session.ts` switched `get
 - This is the safer direction: admins can read if they have the ID, but cannot enumerate or discover private content through search
 
 **Decision: do not fix.** This asymmetry is acceptable and arguably correct UX for a multi-tenant notes product. If full admin enumeration is ever needed, add an explicit "admin mode" search flag rather than silently leaking private notes into search results.
+
+---
+
+## 2026-04-27 — Files pagination (orchestrator)
+
+### Problem found: unbounded listFilesForOrg
+
+`listFilesForOrg` had no `.limit()`. At 10k notes × 5 files = 50k possible rows — single DB query, materialised into Node.js memory, serialised as one JSON response. Immediate performance cliff at seed scale.
+
+### Fix: cursor keyset pagination
+
+- **Cursor:** base64url-encoded `{t: createdAt ISO, id: uuid}`. Composite sort `(createdAt DESC, id ASC)` — `id` is a stable tiebreaker when multiple files share the same timestamp (batch uploads).
+- **Page size:** 50 items (constant in `validation.ts` so API and service agree).
+- **Sentinel technique:** fetch `PAGE_SIZE + 1`; if filtered results exceed `PAGE_SIZE`, truncate and emit cursor pointing to the 50th item. No cursor = end of list.
+- **JS visibility filter interaction:** post-filter runs on the DB batch. If many files are hidden (private notes), visible items per page may be fewer than 50 even if more DB rows exist — next page may return 0 visible items. Acceptable tradeoff vs. complexity of looping until full page. For this workload (most files visible to org members) the practical impact is negligible.
+- **Client:** `fetchPage(cursor, append)` accumulates state; `loadMore` callback passes current `nextCursor`; "Load more" button only renders when `nextCursor` is present.
+- **Commit:** `481d8e9` on `main`
+
+### REVIEW note: distrust agent-generated pagination at scale
+
+Cursor logic is a class of code where agents produce plausible-looking but subtly wrong implementations — particularly around:
+1. Off-by-one in `PAGE_SIZE + 1` detection when the visibility filter removes rows from the sentinel row
+2. Cursor encoding that loses precision (e.g., millisecond timestamps rounded to seconds)
+3. Missing secondary sort key causing non-deterministic ordering and infinite cursors
+
+All three were checked manually before commit. The `(createdAt DESC, id ASC)` sort is deterministic because `id` is a UUID primary key unique per row. The cursor encodes the full ISO 8601 timestamp with ms precision. The `> PAGE_SIZE` check (not `>= PAGE_SIZE`) correctly identifies when the sentinel row is present.

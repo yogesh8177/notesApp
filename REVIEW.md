@@ -94,7 +94,24 @@ Rationale:
 *pending:*
 
 ### Files
-*pending:*
+*orchestrator, deep — 2026-04-27:*
+
+**Reviewed deeply:**
+
+- **`listFilesForOrg` (pre-fix)** — no `.limit()` on the query; would fetch the entire org's file set into memory and serialise as one HTTP response. At 50k rows this is a memory/latency cliff. ✅ Fixed (commit `481d8e9`).
+- **Cursor correctness** — agent-generated pagination is a known distrust area (see "Things we distrust most"). Manually verified:
+  - Sort key is `(createdAt DESC, id ASC)` — deterministic because `id` is PK unique per row; no infinite-cursor scenario.
+  - Cursor encodes full ISO 8601 ms-precision timestamp — no rounding loss.
+  - Sentinel check: `visible.length > FILES_PAGE_SIZE` (strictly greater) — correct; `>=` would emit a cursor when the last page happens to be exactly 50 items, causing an empty final fetch.
+  - WHERE clause: `(createdAt < t) OR (createdAt = t AND id > cursorId)` — correct keyset condition for `(DESC, ASC)` composite order.
+- **Visibility post-filter** — `canReadAttachedNote` applied per row after DB fetch. Private-note files correctly hidden. Org-level files (noteId=null) always visible to org members. ✅
+- **Multi-tenancy** — `eq(files.orgId, access.orgId)` in the WHERE clause; `requireOrgFilesAccess` enforces membership before any query. ✅
+- **Upload** — signed URL flow: token issued by service-role client, bytes go directly browser → Supabase Storage (no Next.js buffering). `MAX_FILES_PER_NOTE = 5` enforced server-side before issuing token. ✅
+- **Delete** — soft-delete only (`deletedAt`), then removes from storage. Auth check: uploader OR admin. Service-role client for storage remove. ✅
+- **Download** — signed URL with `FILE_DOWNLOAD_URL_TTL_SECONDS` TTL. Membership + note-visibility check before issuing. ✅
+
+**Known gap (acceptable):**
+- JS visibility filtering on paginated batches: if many files in a page belong to private notes the current user can't read, visible items per page can be < 50 even with more DB rows pending. "Load more" then returns 0 items. For typical org workloads this won't occur; fixing requires loop-until-full-page logic. Flagged for post-MVP if needed.
 
 ### AI summary
 *pending:*

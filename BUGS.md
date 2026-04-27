@@ -250,3 +250,19 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **Fix:** Added `INNER JOIN notes ON notes.id = ai_summaries.note_id` with `eq(notes.orgId, orgId)` and `isNull(notes.deletedAt)` directly in the query. The org boundary is now enforced at the query site.
 
 **Fix commit:** `7a780c9` on `agent/ai-summary`
+
+---
+
+## [HIGH] files page unbounded query — potential memory/latency cliff (commit 481d8e9)
+
+**Where:** `src/lib/files/index.ts:54` — `listFilesForOrg()` (original)
+
+**Found by:** Orchestrator review, 2026-04-27
+
+**What:** `listFilesForOrg` had no `.limit()` — it fetched every non-deleted org file in a single query, then post-filtered visibility in JS, then serialised the entire result set into a single JSON response.
+
+**Why bad:** With the 10k-note seed (up to 5 files/note = ~50k rows), this was an unbounded DB read, full result set materialised in Node.js memory, and a single HTTP response potentially hundreds of MB in size. Would OOM or time out in production.
+
+**Fix:** Added `FILES_PAGE_SIZE = 50` limit, composite cursor `(createdAt DESC, id ASC)` for stable keyset pagination. API returns `nextCursor`; client accumulates pages with a "Load more" button. `PAGE_SIZE + 1` fetch detects whether a next page exists after JS visibility filtering.
+
+**Fix commit:** `481d8e9` on `main`
