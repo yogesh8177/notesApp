@@ -70,10 +70,18 @@
 ## Reviewer's notes (per-area)
 
 ### Schema + RLS
-*orchestrator, deep:*
+*orchestrator, deep — 2026-04-26:*
+
+- Walked every RLS policy in `drizzle/0002_rls_policies.sql` against the `(visibility × role × is-author × is-shared)` matrix. Visibility predicate matches `getNotePermission` in app code; no admin-bypass shortcut on `private` notes.
+- Confirmed `auth.users` insert trigger creates `public.users` row; storage policies bucket-isolate `notes-files` to org-prefixed paths.
+- Outstanding: nightly job to diff `getNotePermission` vs SQL policy on a sample (logged as future work in NOTES.md).
 
 ### Auth helpers
-*orchestrator, deep:*
+*orchestrator, deep — 2026-04-26:*
+
+- `getCurrentUser()` uses `getUser()` for server-side authentication (after a brief `getSession()` detour was reverted; see BUGS.md `8b14459`). `cache()` deduplicates to one network call per render tree.
+- `requireOrgRole` runs in every `/orgs/[orgId]` layout — viewers can read pages but mutations re-check at the action site via `assertCanWriteNote` / `assertCanShareNote`.
+- Magic-link callback validates `redirect_to` is a same-origin path before redirecting; open-redirect path-only allowlist verified.
 
 ### Notes core
 
@@ -88,10 +96,16 @@ Trade-offs:
 Rationale:
 - Editing the same note concurrently is expected to be low-frequency, so row-level locking is unlikely to be a scalability bottleneck.
 - If higher contention or real-time collaboration requirements emerge, we can switch to optimistic locking with version checks to surface conflicts to the client. This would also avoid stale edits from older version user trying to edit.
-*pending — notes-core agent merge:*
+
+*Detailed post-merge review of notes-core lives further down under "Post-implementation review (2026-04-26)".*
 
 ### Search
-*pending:*
+*orchestrator, deep — 2026-04-26 / 2026-04-27:*
+
+- Three code paths (`searchByFts`, `searchByTag`, `browseFiltered`) share the same `buildBaseConditions` so org / visibility / tag / author / date filters are identical across paths. Reviewed each path's WHERE clause manually for tenant boundary enforcement.
+- Admin/owner bypass that exposed private notes in agent's draft was removed before merge (BUGS.md `0e58a2e`).
+- Filter-only request bug (selectors silently no-op'd without a text query) found and fixed during user testing (BUGS.md `b1399be`).
+- Audit logged on every search via `audit('search.query', ...)`.
 
 ### Files
 *orchestrator, deep — 2026-04-27:*
@@ -114,11 +128,21 @@ Rationale:
 - JS visibility filtering on paginated batches: if many files in a page belong to private notes the current user can't read, visible items per page can be < 50 even with more DB rows pending. "Load more" then returns 0 items. For typical org workloads this won't occur; fixing requires loop-until-full-page logic. Flagged for post-MVP if needed.
 
 ### AI summary
-*pending:*
+*orchestrator, deep — 2026-04-27:*
+
+- Verified prompt construction in `src/lib/ai/prompt.ts` — user note content is delimiter-separated, never free-interpolated. Reviewed for prompt-injection surface.
+- Provider abstraction in `src/lib/ai/provider.ts` does Anthropic → OpenAI fallback with a typed combined-failure return. Schema validation on parsed output rejects malformed structured summaries before they hit the DB.
+- Cross-tenant note ID leak in `getSummaryMatchingNoteIds` caught and fixed before merge — added `INNER JOIN notes` with `eq(notes.orgId, orgId)` (BUGS.md `7a780c9`).
+- Rate limiter is in-memory per process — flagged as integration required for Redis once the deployment scales beyond one Railway replica (logged in NOTES.md "more time" section).
 
 ### Org admin
-Found a conflict for implementing org switcher in the baseline vs agent scoped code change path. Allowed permission for agent implementing org functionality to edit required file under orgs>[orgId]>layout.tsx directory.
-*pending:*
+*orchestrator, deep — 2026-04-26 / 2026-04-27:*
+
+- Org switcher implementation crossed module boundaries; permission to edit `orgs/[orgId]/layout.tsx` granted for org-admin agent. Reviewed result for any auth-bypass risk — confirmed cookie set by switcher is informational only and never read for authorization.
+- `create.ts`: slug uniqueness check before INSERT (not via 23505 catch); owner membership inserted in same transaction; service-role client used because the creator has no membership yet.
+- `invite.ts`: `acceptInvite` validates email match server-side; `onConflictDoNothing` makes re-acceptance idempotent; expiry check before membership insert.
+- `roles.ts`: last-owner guard counts `role='owner'` rows and returns 422 if ≤1; self-demotion allowed only when other owners remain.
+- Bug found and fixed: server-only `audit()` imported in `"use client"` org-switcher (BUGS.md `fd552e7`).
 
 ### Seed data
 *orchestrator, deep — 2026-04-27:*
@@ -149,7 +173,13 @@ Found a conflict for implementing org switcher in the baseline vs agent scoped c
 - `waitForProfiles` polls all 20 user IDs in a single `inArray` query per tick. Acceptable at 20 users; would need pagination at 1000+.
 
 ### Deploy / ops
-*pending:*
+*orchestrator, sampled — 2026-04-27:*
+
+- `Dockerfile` multi-stage build (deps / builder / runner) reviewed for cache layer ordering and standalone Next.js output. `output: "standalone"` set in `next.config.ts`.
+- `railway.toml` uses `[build]` and `[deploy]` only; previous `[[services]]` array form (invalid for single-service) was removed (BUGS.md `3972bdb`).
+- `/healthz` endpoint returns `{"ok":true}` — used by Railway health check before traffic is routed.
+- `NEXT_PUBLIC_*` vars must be configured as Railway **build** variables (not just runtime) so they are inlined into the client bundle. Documented in BUGS.md.
+- Out of scope for this 24h build: third-party log sink (Logtail/Better Stack), trace ID propagation, latency metrics. Logged in NOTES.md.
 ---
 
 ## Post-implementation review (2026-04-26)

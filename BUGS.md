@@ -39,7 +39,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ## Findings
 
-### [search] Admin/owner bypass exposed private notes — service.ts `buildReadablePredicate`
+## [HIGH] [search] Admin/owner bypass exposed private notes — service.ts `buildReadablePredicate`
 
 - **What**: `buildReadablePredicate` returned `sql\`true\`` for `owner`/`admin` roles, meaning org owners could read every note including `private` ones authored by other users.
 - **Where**: `src/lib/search/service.ts` in Dewey's uncommitted draft.
@@ -49,7 +49,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ---
 
-### [search] Tag filter in HAVING broke pagination — service.ts
+## [MED] [search] Tag filter in HAVING broke pagination — service.ts
 
 - **What**: `input.tag` filter was computed as `coalesce(bool_or(...), false)` in `.having()`. Post-aggregation HAVING filtering is fine logically but inconsistent with a WHERE-based pagination model where LIMIT/OFFSET should be applied after all filters.
 - **Where**: `src/lib/search/service.ts`, `.having()` clause in Dewey's draft.
@@ -59,15 +59,18 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ---
 
-### [search] #tag prefix path missing — service.ts
+## [HIGH] [search] #tag prefix path missing — service.ts
 
 - **What**: Module spec requires: "If query starts with `#tag`, look up the tag row in this org and filter by `note_tags.tag_id`." Dewey's draft had no such path.
 - **Where**: `src/lib/search/service.ts`
 - **Why bad**: Tag chips in the UI link to `#tagname` queries. Without the path, a `#` prefix falls through to FTS where `websearch_to_tsquery` treats it as a plain word, yielding poor/wrong results.
 - **Fix**: Added `searchByTag()` — looks up tag by (orgId, lower(name)), then filters notes via EXISTS on `note_tags.tag_id`. Falls through to `searchByFts` for non-prefixed queries.
 - **Commit**: `0e58a2e` on agent/search
-- Updated seed-10k.md in main branch, worktree was unaware of it thus it could not implement the updated plan. Once rebased with main worktree now has updated context.
-- org-admin agent stopped and raised an issue where it didn't have permission to make changes for org switcher implementation, upon review permission was granted as it does own that surface area.
+
+> Stray ops notes that lived under this entry were moved to NOTES.md (seed-10k guide rebase + org-admin permission grant for the org-switcher cross-cut). They were not bug findings.
+
+---
+
 ## [org-admin] Server-only audit() imported in "use client" component
 
 - **Where:** `src/components/org/org-switcher.tsx:4` (org-admin worktree)
@@ -110,7 +113,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ---
 
-### settings actions silently discarded errors (2026-04-27)
+## [HIGH] [org-admin] settings actions silently discarded errors (commit 2f66565)
 
 - **What:** Invite send, role change, and leave-org buttons appeared to do nothing in the org settings page.
 - **Where:** `src/app/orgs/[orgId]/settings/page.tsx` — inline server actions `handleInvite`, `handleRoleChange`, `handleLeave`.
@@ -120,7 +123,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ---
 
-### next@15.1.0 security vulnerabilities flagged by Railway (2026-04-27)
+## [MED] [deps] next@15.1.0 security vulnerabilities flagged by Railway (commit 1dc225e)
 
 - **What:** Next.js 15.1.0 contains known security vulnerabilities.
 - **Where:** `package.json` — `"next": "15.1.0"`.
@@ -130,7 +133,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ---
 
-### Dockerfile COPY fails — missing public/ directory (2026-04-27)
+## [HIGH] [deploy] Dockerfile COPY fails — missing public/ directory (commit 3972bdb)
 
 - **What:** Docker build errors at `COPY --from=builder /app/public ./public` in the runner stage.
 - **Where:** `Dockerfile` runner stage, line ~48. `public/` was never created in the repo.
@@ -138,7 +141,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Fix:** Created `public/.gitkeep` so the directory exists in the build context.
 - **Fix commit:** 3972bdb (main)
 
-### Invalid [[services]] table in railway.toml (2026-04-27)
+## [LOW] [deploy] Invalid [[services]] table in railway.toml (commit 3972bdb)
 
 - **What:** `[[services]]` array table is not valid Railway TOML for single-service deployments.
 - **Where:** `railway.toml` lines 16-17.
@@ -146,7 +149,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Fix:** Removed the block — `[build]` and `[deploy]` are sufficient for a single service.
 - **Fix commit:** 3972bdb (main)
 
-### NEXT_PUBLIC_* vars must be Railway build variables (2026-04-27)
+## [HIGH] [deploy] NEXT_PUBLIC_* vars must be Railway build variables (operational, no code commit)
 
 - **What:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL` are baked into the Next.js bundle at build time.
 - **Where:** Railway project settings — Build Variables tab.
@@ -156,7 +159,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ---
 
-### Production build blocked by 8 type/lint errors (2026-04-27)
+## [HIGH] [build] Production build blocked by 8 type/lint errors (commit 2ff2775)
 
 - **What:** `npm run build` failed — ESLint errors and TypeScript type errors across 10 files.
 - **Where:** `log/index.ts`, `invite/[token]/page.tsx`, `files-client.tsx`, `ai/schema.ts`, `auth/permissions.ts`, `files/index.ts`, `validation/result.ts`, `supabase/middleware.ts`, `supabase/server.ts`, `env.ts`.

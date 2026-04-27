@@ -51,7 +51,7 @@
 - `ai-summary` — worker `Leibniz`; worktree `/private/tmp/notes-app-ai-summary`; branch `agent/ai-summary`; prompt: inspect owned paths and either implement safely from local baseline or log precise blockers because no local module guide is present.
 - `org-admin` — worker `Planck`; worktree `/private/tmp/notes-app-org-admin`; branch `agent/org-admin`; prompt: inspect owned paths and either implement safely from local baseline or log precise blockers because no local module guide is present.
 - `seed-10k` — worker `Ampere`; worktree `/private/tmp/notes-app-seed-10k`; branch `agent/seed-10k`; prompt: inspect `scripts/seed/**` and either improve the large-seed workflow safely or log precise blockers because no local module guide is present.
-- `deploy-ops` — pending; branch/worktree reserved at `/private/tmp/notes-app-deploy-ops` on `agent/deploy-ops`; worker launch deferred by the 6-agent runtime cap.
+- `deploy-ops` — orchestrator-handled inline (sub-agent launch deferred by the 6-agent runtime cap, then absorbed into the main thread). `Dockerfile`, `railway.toml`, and `/healthz` shipped from `main`; Railway env vars and Supabase URL configuration done by the user.
 
 ### 2026-04-26 — Module agent outcomes so far
 
@@ -118,7 +118,7 @@ Sub-agent dispatched twice, both times denied tool access by the environment. Or
 4. Created `NoteFileUploader` client component
 
 **What was right:** Reusing `canReadAttachedNote` for `getFilesForNote` access checks — same visibility logic, no duplication.
-**What's pending:** Notes-core needs one import + render of `<NoteFileUploader>` in note create/edit forms. Documented in NOTES.md.
+**Integration required:** Notes-core needs one import + render of `<NoteFileUploader>` in note create/edit forms. Documented in NOTES.md.
 ### 2026-04-26 — Module agent `Leibniz` retry with restored ai-summary guide
 
 - Re-ran after baseline added `CLAUDE.md` and `docs/modules/ai-summary.md`.
@@ -140,7 +140,7 @@ Sub-agent dispatched twice, both times denied tool access. Orchestrator implemen
 2. `src/lib/ai/summary-search.ts` — JSONB search helper for notes-core to use
 
 **What was right:** Layout approach adds "AI Summary" tab without touching notes-core's page.tsx. Clean merge.
-**What's pending:** Notes-core must call `getSummaryMatchingNoteIds` in `listNotesForUser` to include summary text in search. Exact integration snippet in NOTES.md.
+**Integration required:** Notes-core must call `getSummaryMatchingNoteIds` in `listNotesForUser` to include summary text in search. Exact integration snippet in NOTES.md.
 
 ---
 
@@ -180,12 +180,12 @@ Sub-agent dispatched twice, both times denied tool access. Orchestrator implemen
 **No sub-agent used** — sequential file reads answered the question; delegating would have added overhead with no benefit.
 
 **Changes made:**
-- `session.ts`: `getUser()` → `getSession()` (eliminates one ~150–300ms Supabase network call per page load)
-- `db/client.ts`: `max: 1 → 5` in dev (allows `Promise.all` DB queries to run in parallel)
+- `session.ts`: `getUser()` → `getSession()` (eliminates one ~150–300ms Supabase network call per page load) — **later reverted** when the Supabase SDK emitted a security warning about `getSession()` returning unauthenticated cookie data; see `getSession()` revert entry below and BUGS.md commit `8b14459`.
+- `db/client.ts`: `max: 1 → 5` in dev (allows `Promise.all` DB queries to run in parallel) — kept; covers the latency regression on its own.
 
-**What was right:** Correctly identified the double auth call as root cause. `getSession()` is safe here because the middleware's `getUser()` on the same request already validated and refreshed the JWT.
+**What was right at the time:** Correctly identified the double auth call as the latency root cause. The pool fix on its own was sufficient.
 
-**What to watch:** If Supabase ever adds server-side session revocation that needs to be enforced immediately (e.g. admin force-logout), `getSession()` won't catch revoked tokens mid-JWT-lifetime. For a notes app this is an acceptable tradeoff; revisit if auth requirements change.
+**What was wrong:** Treating middleware's prior `getUser()` as a sufficient security boundary for downstream consumers was overly optimistic. Supabase's SDK explicitly warns that `getSession()` reads cookie data that has not been re-authenticated against the auth server. Reverted in a later session.
 
 ## 2026-04-27 — Files-in-notes + summary features (orchestrator)
 
@@ -309,3 +309,27 @@ Read: `summary/page.tsx` — found it already fully built. Gap was navigation to
 **What was wrong:** `request.nextUrl` in Next.js route handlers reflects the address the server is listening on internally, not the address the client used. This is a known gotcha with any Next.js deployment behind a reverse proxy. Should have been caught during deploy-ops review.
 
 **What was right:** Using `x-forwarded-host` is the correct pattern — Railway sets it reliably. The fallback to `request.nextUrl.origin` keeps local dev working without extra env config.
+
+## 2026-04-28 — Documentation cleanup pass (orchestrator, no sub-agent)
+
+**Trigger:** User requested doc-only cleanup: fix inconsistencies, remove unfinished language, normalize BUGS.md format, reduce overclaims, preserve voice. Explicit instruction: "Reduce changes. Only fix correctness and clarity issues, this isn't rewrite rather tuning for submission."
+
+**What I read first:**
+- All six target files (`README.md`, `REVIEW.md`, `NOTES.md`, `CLAUDE.md`, `BUGS.md`, `AI_USAGE.md`) end-to-end before editing anything. Without that pass it is too easy to "fix" a passage that another file resolves later.
+
+**Decision tree I followed:**
+
+1. Identify contradictions across files first — these are the highest-cost defects because they make the docs feel untrustworthy. The `getSession()` vs `getUser()` story was the clearest example: AI_USAGE.md described the switch as a current optimisation; BUGS.md `8b14459` documented the revert. Fixed by amending the AI_USAGE.md entry to acknowledge the revert in line.
+2. Replace "pending" / "what's pending" with concrete language only where there's actual evidence the work is complete or known to be out of scope. Don't manufacture closure for things that are genuinely incomplete.
+3. For BUGS.md, only normalize the heading shape — don't rewrite entry bodies. The bodies are honest field notes; rewriting them would be exactly the over-polish the user asked me not to do.
+4. Move stray non-bug content (the seed-10k.md rebase note, the org-admin permission grant note) to NOTES.md where ops decisions belong. Leave a one-line breadcrumb in BUGS.md so the move is explicit.
+
+**What I deliberately did not do:**
+- Did not collapse this AI_USAGE.md log into a summary. It is supposed to read as an honest agent-execution trail.
+- Did not reorder REVIEW.md sections or change tone. Filled the empty placeholders with content that already existed in BUGS.md/NOTES.md, citing those entries explicitly so the reader can verify.
+- Did not rewrite "completely broken" / "completely undiagnosable" — these are factual descriptions of the bugs, not overclaims. The user's overclaim guidance targets words like "safe" / "guaranteed" used as architectural claims, which I did not find anywhere that warranted rewording (the closest case was the now-deleted "getSession is safe here" claim, which I rewrote because it was actually wrong).
+- Did not touch CLAUDE.md or README.md — they were consistent with the implementation.
+
+**What was right:** Reading all files first; then making the smallest set of focused edits per file rather than doing one pass per file.
+
+**What I wanted to do but didn't:** Restructuring REVIEW.md to put the per-area review notes alphabetically. The user said "Do not reorder large sections" — left as-is.

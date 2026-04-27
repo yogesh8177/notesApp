@@ -698,3 +698,34 @@ In priority order:
 2. Per-`orgId` rate limit on `/api/search` and `/api/ai` (the two most expensive endpoints)
 3. `org_quotas` table with notes/files/storage caps enforced at insert
 4. Redis rate limiter replacing the in-memory AI limiter before adding replicas
+
+---
+
+## 2026-04-26/27 — Cross-cut ops notes moved out of BUGS.md (orchestrator)
+
+These are not bug findings; they were misfiled under the search bug entries:
+
+- **seed-10k guide rebase**: `docs/modules/seed-10k.md` was updated on `main` after the agent's worktree was created, so the worktree implemented an older plan. Resolved by rebasing the worktree onto `main` and re-running the implementation against the updated guide.
+- **org-admin org-switcher permission grant**: org-admin agent stopped on encountering the org switcher in `orgs/[orgId]/layout.tsx` because the file was outside its declared module ownership. Orchestrator granted the cross-cut permission after confirming org-admin is the right owner of the switcher surface; documented in CLAUDE.md ownership matrix.
+
+---
+
+## 2026-04-28 — Documentation cleanup pass (orchestrator)
+
+### User input
+"Clean up documentation only (no code changes) to remove inconsistencies, sloppy phrasing, and contradictions — while preserving authenticity and engineering voice. Reduce changes. Only fix correctness and clarity issues, this isn't rewrite rather tuning for submission."
+
+### What I changed and why
+
+- **AI_USAGE.md** — `getSession()` perf entry now explicitly notes the later revert and links to BUGS.md `8b14459`. Two `What's pending` lines became `Integration required`. `deploy-ops — pending` line replaced with description of the final inline-handled state.
+- **REVIEW.md** — five empty `*pending:*` placeholders filled with the actual review content (drawn from BUGS.md and NOTES.md entries that already documented the work). Notes-core "pending — agent merge" pointer dropped because the post-impl review already lives further down the same file.
+- **BUGS.md** — moved two stray cross-cut ops sentences out of the search bug entry into NOTES.md (they were misfiled, not bug findings). Normalized older `### [scope] Title (date)` headings to the standard `## [SEV] [scope] Title (commit X)` format documented at the top of the file. Content of each entry left unchanged.
+- **NOTES.md** — added this entry per user request.
+
+### What I deliberately did not change
+
+- Tone, voice, or structure of any file.
+- Any technical decision, log, or reasoning section.
+- The "What we'd do with more time" / noisy neighbour sections.
+- BUGS.md entry bodies — only headings normalized.
+- AI_USAGE.md agent log entries — left as honest log, not summarized.
