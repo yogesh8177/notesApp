@@ -1,15 +1,18 @@
-import { eq, ilike, or, sql } from "drizzle-orm";
+import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { aiSummaries } from "@/lib/db/schema";
+import { aiSummaries, notes } from "@/lib/db/schema";
 
 /**
- * Returns note IDs whose latest accepted summary contains the search term
- * in its tldr or keyPoints text. Called by notes-core's listNotesForUser
- * when a search term is present, to widen results to include summary text.
+ * Returns note IDs (scoped to `orgId`) whose latest summary contains the
+ * search term in its tldr or keyPoints text.
  *
- * Integration note for notes-core:
- *   In listNotesForUser, add to the OR filter:
- *     inArray(notes.id, await getSummaryMatchingNoteIds(orgId, term))
+ * The org filter is enforced here via JOIN — callers must not rely on
+ * intersecting the result with their own org filter for correctness.
+ *
+ * Integration note for notes-core's listNotesForUser:
+ *   const summaryIds = term ? await getSummaryMatchingNoteIds(orgId, term) : [];
+ *   // add to the OR condition alongside title/content ilike:
+ *   summaryIds.length ? inArray(notes.id, summaryIds) : undefined,
  */
 export async function getSummaryMatchingNoteIds(orgId: string, term: string): Promise<string[]> {
   const pattern = `%${term}%`;
@@ -17,14 +20,17 @@ export async function getSummaryMatchingNoteIds(orgId: string, term: string): Pr
   const rows = await db
     .selectDistinct({ noteId: aiSummaries.noteId })
     .from(aiSummaries)
+    .innerJoin(notes, eq(notes.id, aiSummaries.noteId))
     .where(
-      or(
-        ilike(sql`(${aiSummaries.structured}->>'tldr')`, pattern),
-        ilike(sql`(${aiSummaries.structured}->'keyPoints')::text`, pattern),
+      and(
+        eq(notes.orgId, orgId),
+        isNull(notes.deletedAt),
+        or(
+          ilike(sql`(${aiSummaries.structured}->>'tldr')`, pattern),
+          ilike(sql`(${aiSummaries.structured}->'keyPoints')::text`, pattern),
+        ),
       ),
     );
 
-  // Filter to notes that belong to this org at the caller side — the summary
-  // table doesn't store orgId, so notes-core must intersect with its own org filter.
   return rows.map((r) => r.noteId);
 }
