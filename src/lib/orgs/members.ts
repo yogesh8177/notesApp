@@ -15,6 +15,7 @@ export interface PendingInviteRow {
   id: string;
   email: string;
   role: OrgRole;
+  token: string;
   expiresAt: Date;
   createdAt: Date;
 }
@@ -42,6 +43,7 @@ export async function listPendingInvites(orgId: string): Promise<PendingInviteRo
       id: orgInvites.id,
       email: orgInvites.email,
       role: orgInvites.role,
+      token: orgInvites.token,
       expiresAt: orgInvites.expiresAt,
       createdAt: orgInvites.createdAt,
     })

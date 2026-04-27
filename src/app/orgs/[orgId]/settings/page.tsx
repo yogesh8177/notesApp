@@ -6,6 +6,7 @@ import { listMembers, listPendingInvites, inviteMember, changeRole, leaveOrg } f
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { orgs } from "@/lib/db/schema";
+import { CopyInviteLink } from "./_components/copy-invite-link";
 
 interface Props {
   params: Promise<{ orgId: string }>;
@@ -161,6 +162,7 @@ export default async function OrgSettingsPage({ params, searchParams }: Props) {
                     <span className="flex-1">{inv.email}</span>
                     <span className="text-xs capitalize text-muted-foreground">{inv.role}</span>
                     <span className="text-xs text-muted-foreground">expires {inv.expiresAt.toLocaleDateString()}</span>
+                    <CopyInviteLink token={inv.token} />
                   </div>
                 ))}
               </div>
