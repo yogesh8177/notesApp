@@ -181,3 +181,20 @@ Read: `summary/page.tsx` — found it already fully built. Gap was navigation to
 **What went wrong:** Sub-agents launched as `brand-voice:*` and unnamed agent types first, then re-dispatched as `general-purpose`. All denied tool access. Root cause: environment permission mode doesn't extend to spawned agents.
 
 **What to log for future:** Always use `general-purpose` subagent type for implementation tasks. If they still fail on tool access, do the work inline.
+
+## 2026-04-27 — Auth revert + file upload error logging (orchestrator, no sub-agent)
+
+**Trigger:** Supabase SDK emitted a runtime security warning about `getSession()` during file upload debugging. User asked to log both fixes in the MD files.
+
+**What I did:**
+1. Identified the warning source — `src/lib/auth/session.ts` using `getSession()` from the previous perf optimisation session
+2. Reverted `getCurrentUser()` to `getUser()` — `cache()` deduplicates to one call per render; security guarantee restored
+3. Added `log.error` to `createUpload` in `src/lib/files/index.ts` to surface the real `StorageError` before throwing `UPSTREAM`
+4. Committed both fixes in one commit (`8b14459`) with full reasoning in the message
+5. Updated BUGS.md with two new entries; updated NOTES.md with the session decision log
+
+**No sub-agent used** — both were single-file edits with clear scope; delegating would have added latency with no benefit.
+
+**What was wrong:** The `getSession()` switch in the previous session was overly optimistic about middleware being a sufficient security boundary. Supabase's own SDK disagrees. Should have kept `getUser()` from the start and relied solely on the pool fix for the perf gain.
+
+**What was right:** Adding `log.error` before the throw is the correct pattern for any external-service call that can fail — never swallow the upstream error object.

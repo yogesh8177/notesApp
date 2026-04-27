@@ -167,6 +167,38 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
   - `ANTHROPIC_API_KEY: z.string().min(1).optional()` rejects empty string `""` — fails build when `.env` has the key blank.
 - **Fix commit:** 2ff2775 (main)
 
+## [auth] getCurrentUser() used getSession() — unauthenticated session data (2026-04-27)
+
+**Where:** `src/lib/auth/session.ts:14` — `getCurrentUser()` implementation
+
+**Found by:** Supabase SDK runtime warning observed during file upload testing
+
+**What:** `getCurrentUser()` was switched to `supabase.auth.getSession()` in a performance optimisation. The Supabase SDK emits an explicit warning: "Using the user object as returned from `getSession()` could be insecure — this value comes directly from the storage medium (usually cookies) and may not be authentic." `getUser()` authenticates the token by contacting the Supabase Auth server; `getSession()` does not.
+
+**Why bad:** Any server action or route handler that calls `requireUser()` / `getCurrentUser()` could act on a tampered session cookie. The middleware validates the JWT on each request, but middleware runs in the Edge runtime before server components — a crafted cookie could theoretically satisfy middleware's check via a valid JWT structure while having incorrect `sub` / `email` claims that only `getUser()` would catch via the introspection endpoint.
+
+**Fix:** Reverted to `supabase.auth.getUser()` in `getCurrentUser()`. The `cache()` wrapper deduplicates this to one network call per render tree. The DB pool fix (`max: 5`) already covers the main latency regression.
+
+**Fix commit:** `8b14459` on `main`
+
+---
+
+## [files] createUpload swallowed Supabase StorageError — UPSTREAM undiagnosable (2026-04-27)
+
+**Where:** `src/lib/files/index.ts:233` — `createUpload()` error branch
+
+**Found by:** Orchestrator, after user reported `{"ok":false,"code":"UPSTREAM","message":"Could not create a signed upload URL"}` with no further detail
+
+**What:** When `storage.createSignedUploadUrl()` returns an error, the code threw a `FilesError("UPSTREAM", …)` without logging the underlying `StorageError`. The actual Supabase error (wrong bucket name, missing service-role key, RLS denial, etc.) was silently discarded.
+
+**Why bad:** Completely undiagnosable from logs. The user sees a generic error; operators have no signal to distinguish "bucket doesn't exist" from "wrong API key" from "network timeout".
+
+**Fix:** Added `log.error({ err: error, bucket: FILES_BUCKET, storagePath }, "files.signed_url_failed")` before the throw so the real StorageError is visible in server logs.
+
+**Fix commit:** `8b14459` on `main`
+
+---
+
 ## [ai-summary] getSummaryMatchingNoteIds missing org filter — cross-tenant note ID leak
 
 **What:** `src/lib/ai/summary-search.ts` `getSummaryMatchingNoteIds(orgId, term)` accepted `orgId` as a parameter but never used it in the query. It searched `ai_summaries` across all orgs and returned note IDs from every tenant.

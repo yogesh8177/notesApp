@@ -537,6 +537,29 @@ Full read of all query/mutation paths. App is multi-tenant safe:
 - Search enforces `eq(notes.orgId, input.orgId)` + `getMembership` check + `buildReadablePredicate` SQL
 - Only active bug was `getSummaryMatchingNoteIds` missing org filter (fixed, BUGS.md)
 
+## 2026-04-27 — Auth security revert + file upload error visibility (orchestrator)
+
+### Auth: reverted getSession() → getUser()
+
+During the file upload debugging session, the Supabase SDK emitted a runtime warning:
+> "Using the user object as returned from `getSession()` or from some `onAuthStateChange()` events could be insecure. This value comes directly from the storage medium (usually cookies) and may not be authentic. Use `supabase.auth.getUser()` instead."
+
+The previous performance optimisation in `src/lib/auth/session.ts` switched `getCurrentUser()` to `getSession()` to eliminate a Supabase Auth network round-trip. The reasoning was that middleware's `getUser()` already validated the JWT on the same request. Supabase SDK's explicit warning indicates this is not a safe assumption — `getSession()` reads cookie claims without Auth-server verification, which is insufficient for a security boundary.
+
+**Decision:** Reverted to `getUser()`. The `cache()` wrapper still deduplicates to one network call per render tree. The DB pool fix (`max: 5`) is what actually resolved the bulk of the latency regression, not the `getSession()` switch.
+
+**Rule going forward:** Never use `getSession()` in server components, server actions, or route handlers for the authenticated user identity. Use `getUser()` always. `getSession()` is appropriate only for reading non-security-sensitive JWT claims (e.g., display hints) where stale data is acceptable.
+
+### Files: log real Supabase error before throwing UPSTREAM
+
+`createUpload()` in `src/lib/files/index.ts` was discarding the underlying `StorageError` entirely. Added `log.error({ err: error, bucket: FILES_BUCKET, storagePath }, "files.signed_url_failed")` before the throw. Now the real error (wrong bucket, missing key, RLS denial, etc.) appears in server logs.
+
+**Diagnosis of the user's upload error:** Most likely cause is `drizzle/0003_storage_policies.sql` not having been run — the `notes-files` storage bucket is created there. Run that migration in Supabase Dashboard → SQL Editor, or create the bucket manually as private. Alternatively, verify `SUPABASE_SERVICE_ROLE_KEY` is set correctly in `.env`.
+
+**Commit:** `8b14459` on `main`
+
+---
+
 ### Conscious decision: admin visibility inconsistency
 
 **Behaviour:** Org admins can access any note (including private notes by other members) via direct URL/ID. However, private notes authored by others do NOT appear in search results for admins.
