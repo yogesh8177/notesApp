@@ -269,3 +269,25 @@ Read: `summary/page.tsx` — found it already fully built. Gap was navigation to
 **What was wrong:** The `getSession()` switch in the previous session was overly optimistic about middleware being a sufficient security boundary. Supabase's own SDK disagrees. Should have kept `getUser()` from the start and relied solely on the pool fix for the perf gain.
 
 **What was right:** Adding `log.error` before the throw is the correct pattern for any external-service call that can fail — never swallow the upstream error object.
+
+## 2026-04-27 — Seed trigger timeout + RLS analysis (orchestrator, no sub-agent)
+
+**Trigger:** `npm run seed` failed with "Timed out waiting for public.users rows created by auth trigger" after successfully creating 20 auth users.
+
+**What I did:**
+1. Read `waitForProfiles` in `scripts/seed/run.ts` — confirmed it polls `public.users` by ID array with 250ms interval, 10s timeout
+2. Read the trigger definition in `drizzle/0002_rls_policies.sql` — `on_auth_user_created` AFTER INSERT on `auth.users` — trigger is correct SQL but not guaranteed to fire in hosted Supabase (auth service commits on its own connection)
+3. Read `schema/users.ts` — confirmed `public.users` has RLS enabled; confirmed seed uses `postgres(DIRECT_URL)` which is a superuser connection that bypasses RLS entirely
+4. Identified the two independent issues: (a) trigger not firing — not an RLS problem on the SELECT, simply no rows; (b) direct INSERT works because superuser bypasses RLS
+5. Replaced `waitForProfiles` with `ensureUserProfiles` — direct upsert into `public.users` with `onConflictDoNothing` so it's idempotent if trigger does fire
+6. Ran `npm run seed` — succeeded: 10 orgs, 20 users, 10k notes, 25k versions, 100 files
+
+**No sub-agent used** — single function replacement with clear diagnosis.
+
+**What was wrong:** `waitForProfiles` treated the trigger as a reliable synchronous side-effect of `admin.createUser`. In hosted Supabase, the auth service writes `auth.users` via its own internal connection; the trigger fires within Postgres but not necessarily before the seed's next poll resolves. The 10s timeout is too short at cold-start with 20 sequential user creations.
+
+**Key insight (user-identified):** The reason the direct INSERT worked without RLS interference is that the seed's Postgres connection is the superuser — it bypasses all RLS policies. This is also why `waitForProfiles`'s SELECT would have worked if the trigger had fired; the SELECT was not the problem. The problem was that there were no rows to select.
+
+**What was right:** `onConflictDoNothing` correctly handles the case where the trigger fires before the seed's upsert — no double-write, no error. The fix is both correct and idempotent.
+
+**Design principle logged:** Seed scripts that bootstrap auth users should always write the mirror profile rows themselves. Triggers are for the application request path; seeds own their own setup and cannot depend on application-layer trigger presence.

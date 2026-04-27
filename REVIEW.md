@@ -187,3 +187,27 @@ Found a conflict for implementing org switcher in the baseline vs agent scoped c
 - Invite email sending not wired (intentional — link goes to audit_log). Should add env-gated email hook before production.
 - Org name/slug edit not implemented on settings page (not required by spec, flagged for follow-up).
 
+
+---
+
+## Post-implementation review (2026-04-27, continued)
+
+### Seed — trigger vs. direct insert (orchestrator)
+
+**Bug found and fixed (`b2357fb`):** `waitForProfiles` timed out because the `on_auth_user_created` trigger was not firing (not installed, or the Supabase auth service commits `auth.users` on its own connection before the trigger propagates to the seed's view).
+
+**Root cause analysis:**
+
+Two issues were initially conflated but are independent:
+
+1. **The trigger wasn't firing** — `waitForProfiles` polled for rows that never appeared. The SELECT itself was not blocked by RLS; the seed uses `postgres(DIRECT_URL)` which connects as the Postgres superuser and bypasses all RLS policies entirely. There were simply no rows to find because the trigger hadn't run.
+
+2. **The direct INSERT worked without RLS** — `ensureUserProfiles` inserts into `public.users` directly via the same superuser connection. RLS is enabled on `public.users` (from `0002_rls_policies.sql`) but the superuser bypass means no policy is evaluated. This is correct behaviour for a privileged offline seed operation.
+
+**Why the fix is correct:**
+
+- The seed is a privileged offline operation — it legitimately runs as superuser and should not depend on application-layer triggers it doesn't control.
+- `onConflictDoNothing` makes the upsert idempotent: if the trigger IS installed and fires first, the seed's insert silently skips. No double-write risk.
+- The original `waitForProfiles` design was fragile: it assumed trigger presence and a specific timing relationship between the auth service's commit and the seed's DB connection. Neither is guaranteed in a hosted Supabase environment.
+
+**Lesson:** Seed scripts that bootstrap auth users should always write the mirror profile rows themselves. Triggers are for the application path; seeds own their own setup.
