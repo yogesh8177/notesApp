@@ -10,3 +10,8 @@ export interface FileListItem {
   createdAt: string;
   canDelete: boolean;
 }
+
+export interface FilesPage {
+  items: FileListItem[];
+  nextCursor: string | null;
+}

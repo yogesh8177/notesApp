@@ -29,18 +29,27 @@ export async function GET(request: Request) {
   }
 
   // Org-scoped file list — used by the Files page
-  const parsed = filesListQuerySchema.safeParse({ orgId: url.searchParams.get("orgId") });
+  const parsed = filesListQuerySchema.safeParse({
+    orgId: url.searchParams.get("orgId"),
+    cursor: url.searchParams.get("cursor") ?? undefined,
+  });
   if (!parsed.success) {
     return toResponse(fromZod(parsed.error));
   }
 
   try {
     const role = await requireOrgFilesAccess(parsed.data.orgId, user.id, "viewer");
-    const items = await listFilesForOrg({ orgId: parsed.data.orgId, userId: user.id, role });
+    const page = await listFilesForOrg({
+      orgId: parsed.data.orgId,
+      userId: user.id,
+      role,
+      cursor: parsed.data.cursor,
+    });
     return toResponse(ok({
       role,
       canUpload: role === "owner" || role === "admin" || role === "member",
-      files: items,
+      files: page.items,
+      nextCursor: page.nextCursor,
     }));
   } catch (error) {
     const fileError = toFilesError(error, "Could not load files");

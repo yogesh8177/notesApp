@@ -14,6 +14,7 @@ interface FilesPayload {
   role: "owner" | "admin" | "member" | "viewer";
   canUpload: boolean;
   files: FileListItem[];
+  nextCursor: string | null;
 }
 
 interface ResultEnvelope<T> {
@@ -34,33 +35,47 @@ export function FilesClient({ orgId }: { orgId: string }) {
   const [role, setRole] = useState<FilesPayload["role"] | null>(null);
   const [canUpload, setCanUpload] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [noteId, setNoteId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const refreshFiles = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchPage = useCallback(async (cursor: string | null, append: boolean) => {
+    const url = new URL(`/api/files`, window.location.origin);
+    url.searchParams.set("orgId", orgId);
+    if (cursor) url.searchParams.set("cursor", cursor);
 
-    const response = await fetch(`/api/files?orgId=${encodeURIComponent(orgId)}`, {
-      method: "GET",
-      cache: "no-store",
-    });
+    const response = await fetch(url.toString(), { method: "GET", cache: "no-store" });
     const payload = (await response.json()) as ResultEnvelope<FilesPayload> | ErrorEnvelope;
 
     if (!payload.ok) {
-      setLoading(false);
       setError(payload.message);
       return;
     }
 
-    setItems(payload.data.files);
+    setItems((prev) => (append ? [...prev, ...payload.data.files] : payload.data.files));
     setRole(payload.data.role);
     setCanUpload(payload.data.canUpload);
-    setLoading(false);
+    setNextCursor(payload.data.nextCursor);
   }, [orgId]);
+
+  const refreshFiles = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    await fetchPage(null, false);
+    setLoading(false);
+  }, [fetchPage]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    setError(null);
+    await fetchPage(nextCursor, true);
+    setLoadingMore(false);
+  }, [fetchPage, nextCursor]);
 
   useEffect(() => {
     void refreshFiles();
@@ -220,6 +235,7 @@ export function FilesClient({ orgId }: { orgId: string }) {
 
             <div className="space-y-3">
               {items.map((item) => (
+
                 <div
                   key={item.id}
                   className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between"
@@ -270,6 +286,18 @@ export function FilesClient({ orgId }: { orgId: string }) {
                 </div>
               ))}
             </div>
+
+            {nextCursor ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={loadingMore}
+                onClick={() => void loadMore()}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       </div>

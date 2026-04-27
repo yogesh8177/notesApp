@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { assertCanWriteNote } from "@/lib/auth/permissions";
 import { getMembership } from "@/lib/auth/org";
 import { db } from "@/lib/db/client";
@@ -19,12 +19,42 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { FILE_DOWNLOAD_URL_TTL_SECONDS, FILES_BUCKET } from "./constants";
 import { FilesError } from "./errors";
 import { canReadAttachedNote, hasOrgRole } from "./permissions";
-import type { FileListItem } from "./types";
+import type { FileListItem, FilesPage } from "./types";
+import { FILES_PAGE_SIZE } from "./validation";
+
+interface CursorPayload {
+  t: string;
+  id: string;
+}
+
+function encodeCursor(createdAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify({ t: createdAt.toISOString(), id })).toString("base64url");
+}
+
+function decodeCursor(cursor: string): CursorPayload | null {
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "t" in parsed &&
+      "id" in parsed &&
+      typeof (parsed as CursorPayload).t === "string" &&
+      typeof (parsed as CursorPayload).id === "string"
+    ) {
+      return parsed as CursorPayload;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 interface OrgFilesAccess {
   orgId: string;
   userId: string;
   role: OrgRole;
+  cursor?: string;
 }
 
 interface CreateUploadInput extends OrgFilesAccess {
@@ -51,7 +81,19 @@ interface FileAccessRecord {
   sharePermission: SharePermission | null;
 }
 
-export async function listFilesForOrg(access: OrgFilesAccess): Promise<FileListItem[]> {
+export async function listFilesForOrg(access: OrgFilesAccess): Promise<FilesPage> {
+  const parsed = access.cursor ? decodeCursor(access.cursor) : null;
+  const cursorDate = parsed ? new Date(parsed.t) : null;
+  const cursorId = parsed?.id ?? null;
+
+  const cursorWhere =
+    cursorDate && cursorId
+      ? or(
+          lt(files.createdAt, cursorDate),
+          and(eq(files.createdAt, cursorDate), gt(files.id, cursorId)),
+        )
+      : undefined;
+
   const rows = await db
     .select({
       file: {
@@ -85,10 +127,11 @@ export async function listFilesForOrg(access: OrgFilesAccess): Promise<FileListI
       noteShares,
       and(eq(noteShares.noteId, files.noteId), eq(noteShares.sharedWithUserId, access.userId)),
     )
-    .where(and(eq(files.orgId, access.orgId), isNull(files.deletedAt)))
-    .orderBy(desc(files.createdAt));
+    .where(and(eq(files.orgId, access.orgId), isNull(files.deletedAt), cursorWhere))
+    .orderBy(desc(files.createdAt), asc(files.id))
+    .limit(FILES_PAGE_SIZE + 1);
 
-  return rows.flatMap((row) => {
+  const visible = rows.flatMap((row) => {
     const canRead = canReadAttachedNote({
       role: access.role,
       sharePermission: row.sharePermission,
@@ -98,10 +141,7 @@ export async function listFilesForOrg(access: OrgFilesAccess): Promise<FileListI
       noteDeletedAt: row.note?.deletedAt ?? null,
       userId: access.userId,
     });
-    if (!canRead) {
-      return [];
-    }
-
+    if (!canRead) return [];
     return [
       {
         id: row.file.id,
@@ -117,6 +157,17 @@ export async function listFilesForOrg(access: OrgFilesAccess): Promise<FileListI
       },
     ];
   });
+
+  if (visible.length > FILES_PAGE_SIZE) {
+    const pageItems = visible.slice(0, FILES_PAGE_SIZE);
+    const last = pageItems[pageItems.length - 1];
+    return {
+      items: pageItems,
+      nextCursor: encodeCursor(new Date(last.createdAt), last.id),
+    };
+  }
+
+  return { items: visible, nextCursor: null };
 }
 
 export const MAX_FILES_PER_NOTE = 5;

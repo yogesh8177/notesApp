@@ -7,8 +7,11 @@ const optionalUuid = z
   .or(z.literal(""))
   .transform((value) => value || undefined);
 
+export const FILES_PAGE_SIZE = 50;
+
 export const filesListQuerySchema = z.object({
   orgId: z.string().uuid(),
+  cursor: z.string().optional(),
 });
 
 export const noteFilesQuerySchema = z.object({
