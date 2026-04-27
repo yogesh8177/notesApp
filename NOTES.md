@@ -646,3 +646,52 @@ Current search indexes note title and content only. With more time:
 - Magic link OTP expiry is currently 1 hour (Supabase default). For a team notes app, shorten to 15 minutes and add a "resend" flow.
 - Add PKCE to the magic link flow (Supabase supports it) — prevents code interception in shared environments.
 - Session rotation on privilege escalation (role change within an org) — current sessions survive role downgrades until natural expiry.
+
+---
+
+## 2026-04-27 — Noisy neighbour problem (orchestrator)
+
+### The problem
+Every tenant shares the same Postgres instance, the same Next.js process, and the same Railway container. A single org running `seed:large` (10k notes, 25k versions, 100k search queries) will saturate connection pool slots, spike CPU on tsvector ranking, and slow down every other tenant's reads — with zero isolation between them.
+
+### DB layer
+
+**Connection pool fairness**
+Current setup: one PgBouncer pool shared across all tenants. A burst from org A exhausts the pool; org B gets connection timeouts. Fix: per-tenant connection limits in PgBouncer, or move to Supabase's built-in pooler with `pool_mode=transaction` and a max-connections-per-user cap. At minimum, set `statement_timeout` and `lock_timeout` at the session level so a runaway query from one tenant can't hold locks indefinitely.
+
+**Query cost isolation**
+A 10k-note org running a broad FTS query (`plainto_tsquery('the')`) will do a full index scan and monopolise shared I/O. Fix:
+- `pg_stat_statements` + per-org query budgets enforced via a query cancellation job
+- Rate-limit the `/api/search` route handler per `orgId` (not just per user) — a single org can't hammer search at the expense of others
+- Add `LIMIT` guards deep in the service layer so no single query can return unbounded rows regardless of what the caller requests
+
+**Resource quotas per org**
+No enforcement today on notes count, file storage bytes, or version history depth per org. At scale these become attack surfaces — one org fills the disk, another creates 1M versions of a single note. Add `org_quotas` table and enforce limits at the mutation site before insert.
+
+### Application layer
+
+**Next.js process**
+All tenants share the same Node.js event loop. A CPU-heavy operation (large diff computation, streaming AI response, parsing a 10MB PDF) blocks the loop for everyone. Fix:
+- Move heavy work to background jobs (Railway worker service or Supabase Edge Functions) so the web process stays responsive
+- Stream AI responses through a job queue rather than holding an HTTP connection open — a slow Anthropic response today ties up a Node.js connection slot for every concurrent user
+
+**In-memory rate limiter**
+The AI summary rate limiter is per-process in-memory. Across multiple Railway replicas each process has its own counter — a user can multiply their allowed rate by the replica count. Replace with a Redis atomic counter (`INCR` + `EXPIRE`) shared across all replicas.
+
+**Per-org request rate limiting**
+No org-level rate limiting at the API layer today. One org scripting the notes API can generate thousands of requests per second, starving other tenants at the load balancer level. Add a Redis sliding-window rate limit keyed on `orgId` in middleware, separate from per-user limits.
+
+### Infrastructure layer
+
+**Shared Railway container**
+Currently one Railway service = one container = all tenants. True isolation requires either:
+- **Vertical partitioning by tier:** free orgs share a container, paid orgs get dedicated containers — standard SaaS model
+- **Horizontal sharding:** route requests for large orgs to dedicated Next.js + Postgres instances based on a tenant registry
+- **Minimum viable isolation now:** set Railway memory/CPU limits on the container so one runaway tenant can't OOM the whole process; add a `/healthz` latency check that alerts before degradation is user-visible
+
+### Minimum viable mitigation for this build
+In priority order:
+1. `statement_timeout = 5s` on all DB sessions — prevents one slow query from holding connections
+2. Per-`orgId` rate limit on `/api/search` and `/api/ai` (the two most expensive endpoints)
+3. `org_quotas` table with notes/files/storage caps enforced at insert
+4. Redis rate limiter replacing the in-memory AI limiter before adding replicas
