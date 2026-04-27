@@ -20,6 +20,12 @@ const baseOptions: pino.LoggerOptions = {
     service: "notes-app",
     env: env.NODE_ENV ?? "production",
   },
+  // Output level as a string label so Railway/GCP log drains map severity correctly.
+  formatters: {
+    level(label) {
+      return { level: label };
+    },
+  },
   redact: {
     paths: [
       "*.password",
