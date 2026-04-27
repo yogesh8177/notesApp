@@ -244,3 +244,17 @@ Orchestrator read every relevant page source directly (`notes/page.tsx`, `notes/
 **What was right:** Correctly identified the double auth call as root cause. `getSession()` is safe here because the middleware's `getUser()` on the same request already validated and refreshed the JWT.
 
 **What to watch:** If Supabase ever adds server-side session revocation that needs to be enforced immediately (e.g. admin force-logout), `getSession()` won't catch revoked tokens mid-JWT-lifetime. For a notes app this is an acceptable tradeoff; revisit if auth requirements change.
+
+## 2026-04-27 — Files-in-notes + summary features (orchestrator)
+
+**Parallelization attempted:** dispatched ai-summary and files agents in parallel. All three sub-agent invocations failed — environment denies Bash/Read/Write/Edit tool access to spawned agents. Orchestrator absorbed both tasks.
+
+### Files feature
+Read: `index.ts`, `validation.ts`, `route.ts`, `files-client.tsx`, `types.ts`, `permissions.ts`, `errors.ts`. Identified upload flow (signed URL → Supabase Storage direct upload → metadata insert). Added cap check, note-scoped list endpoint, and `NoteFileUploader` component. No sub-agent.
+
+### AI Summary feature
+Read: `summary/page.tsx` — found it already fully built. Gap was navigation to it. Read schema to understand JSONB `structured` field. Created tab layout + JSONB search helper. No sub-agent.
+
+**What went wrong:** Sub-agents launched as `brand-voice:*` and unnamed agent types first, then re-dispatched as `general-purpose`. All denied tool access. Root cause: environment permission mode doesn't extend to spawned agents.
+
+**What to log for future:** Always use `general-purpose` subagent type for implementation tasks. If they still fail on tool access, do the work inline.

@@ -563,3 +563,20 @@ API calls taking 2–3 seconds on localhost. User reported consistent slowness a
 ### What's still there
 - The middleware `getUser()` call (~150ms) is unavoidable — it's what keeps the session cookie fresh.
 - Geographic latency if Railway region ≠ Supabase region — fix by aligning regions in Railway/Supabase dashboards.
+
+## 2026-04-27 — Features: files-in-notes + summary visibility + search (orchestrator)
+
+### Summary
+
+Two features dispatched to module agents; all three sub-agent attempts failed (environment denied Bash/tool access). Orchestrator implemented directly in both worktrees.
+
+### Files module (`agent/files`) — commit `1cd2d67`
+- `src/lib/files/index.ts`: added `countFilesForNote`, `getFilesForNote`, `MAX_FILES_PER_NOTE=5`. Cap enforced in `createUpload` before signed URL issuance.
+- `src/app/api/files/route.ts`: GET now handles `?noteId=` (note-scoped list) alongside `?orgId=` (org-scoped list).
+- `src/app/orgs/[orgId]/files/_components/note-file-uploader.tsx`: client component — X/5 counter, multi-file picker, upload progress, download/remove. Disabled at cap.
+- **Pending**: notes-core must import `<NoteFileUploader noteId={noteId} orgId={orgId} canWrite={...} />` into note create/edit forms.
+
+### AI Summary module (`agent/ai-summary`) — commit `a6fc868`
+- `src/app/orgs/[orgId]/notes/[noteId]/layout.tsx`: adds "Note" + "AI Summary" tab navigation. Wraps child routes; no notes-core files touched.
+- `src/lib/ai/summary-search.ts`: `getSummaryMatchingNoteIds(orgId, term)` — queries `ai_summaries.structured` JSONB for `tldr` + `keyPoints` matches via `ilike`.
+- **Pending**: notes-core must call `getSummaryMatchingNoteIds` in `listNotesForUser` to extend search to summary text. Integration snippet in that module's NOTES.md.
