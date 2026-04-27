@@ -44,6 +44,14 @@ interface UploadInput {
   body: Buffer;
 }
 
+interface IdRow {
+  id: string;
+}
+
+interface StoragePathRow {
+  storagePath: string;
+}
+
 type DbClient = any;
 type TxClient = any;
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -93,7 +101,7 @@ async function main() {
     await uploadSeedFiles(service, prepared.uploads);
     uploadedPaths.push(...prepared.uploads.map((upload) => upload.path));
 
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: TxClient) => {
       await insertBatches(tx, schema.orgs, prepared.orgRows, "org rows");
       await insertBatches(tx, schema.memberships, prepared.membershipRows, "membership rows");
       await insertBatches(tx, schema.tags, prepared.tagRows, "tag rows");
@@ -280,14 +288,14 @@ async function cleanupPreviousSeedData(
   const seedSlugPattern = `${SEED_ORG_SLUG_PREFIX}-%`;
   const seedEmailPattern = `${SEED_EMAIL_PREFIX}-%@${SEED_EMAIL_DOMAIN}`;
 
-  const existingOrgs = await db
+  const existingOrgs: IdRow[] = await db
     .select({ id: schema.orgs.id })
     .from(schema.orgs)
     .where(like(schema.orgs.slug, seedSlugPattern));
 
   if (existingOrgs.length > 0) {
     const orgIds = existingOrgs.map((org) => org.id);
-    const existingFiles = await db
+    const existingFiles: StoragePathRow[] = await db
       .select({ storagePath: schema.files.storagePath })
       .from(schema.files)
       .where(inArray(schema.files.orgId, orgIds));
@@ -301,7 +309,7 @@ async function cleanupPreviousSeedData(
     }
   }
 
-  await db.transaction(async (tx) => {
+  await db.transaction(async (tx: TxClient) => {
     await tx.delete(schema.orgs).where(like(schema.orgs.slug, seedSlugPattern));
   });
 
@@ -314,13 +322,13 @@ async function cleanupPreviousSeedData(
     );
   }
 
-  const orphanSeedUsers = await db
+  const orphanSeedUsers: IdRow[] = await db
     .select({ id: schema.users.id })
     .from(schema.users)
     .where(like(schema.users.email, seedEmailPattern));
 
   if (orphanSeedUsers.length > 0) {
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: TxClient) => {
       await tx
         .delete(schema.users)
         .where(inArray(schema.users.id, orphanSeedUsers.map((user) => user.id)));
