@@ -19,9 +19,9 @@ const schema = z.object({
   DIRECT_URL: z.string().min(1).optional(),
 
   // AI
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-6"),
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
 
   // App
@@ -36,10 +36,20 @@ const schema = z.object({
 
 const parsed = schema.safeParse(process.env);
 
+// During `next build`, Next.js collects page data before runtime env vars are
+// injected (Railway / Vercel set them at runtime, not build time). Skip the
+// throw so the build succeeds; the app will still crash fast at request time
+// if a required var is missing in production.
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+
 if (!parsed.success) {
-  console.error("❌ Invalid environment:", parsed.error.flatten().fieldErrors);
-  throw new Error("Invalid environment — see logs");
+  if (isBuildPhase) {
+    console.warn("⚠️  env validation skipped during build phase — ensure all vars are set at runtime");
+  } else {
+    console.error("❌ Invalid environment:", parsed.error.flatten().fieldErrors);
+    throw new Error("Invalid environment — see logs");
+  }
 }
 
-export const env = parsed.data;
+export const env = (parsed.success ? parsed.data : {}) as z.infer<typeof schema>;
 export type Env = z.infer<typeof schema>;

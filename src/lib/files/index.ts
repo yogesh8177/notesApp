@@ -110,7 +110,7 @@ export async function listFilesForOrg(access: OrgFilesAccess): Promise<FileListI
         fileName: row.file.fileName,
         mimeType: row.file.mimeType,
         sizeBytes: row.file.sizeBytes,
-        uploadedByLabel: row.uploader.displayName ?? row.uploader.email ?? "Unknown user",
+        uploadedByLabel: row.uploader?.displayName ?? row.uploader?.email ?? "Unknown user",
         createdAt: row.file.createdAt.toISOString(),
         canDelete: row.file.uploadedBy === access.userId || hasOrgRole(access.role, "admin"),
       },

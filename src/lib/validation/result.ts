@@ -26,6 +26,7 @@ export type ErrorCode =
   | "VALIDATION"
   | "RATE_LIMITED"
   | "CONFLICT"
+  | "UNPROCESSABLE"
   | "UPSTREAM"
   | "INTERNAL";
 
@@ -36,6 +37,7 @@ const STATUS: Record<ErrorCode, number> = {
   VALIDATION: 422,
   RATE_LIMITED: 429,
   CONFLICT: 409,
+  UNPROCESSABLE: 422,
   UPSTREAM: 502,
   INTERNAL: 500,
 };

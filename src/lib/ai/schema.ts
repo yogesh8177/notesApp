@@ -39,11 +39,5 @@ export function pickAcceptedSummaryFields(
   summary: SummaryShape,
   fields: SummaryField[],
 ): AcceptedSummaryShape {
-  const accepted: AcceptedSummaryShape = {};
-
-  for (const field of fields) {
-    accepted[field] = summary[field];
-  }
-
-  return accepted;
+  return Object.fromEntries(fields.map((f) => [f, summary[f]])) as AcceptedSummaryShape;
 }
