@@ -729,3 +729,34 @@ These are not bug findings; they were misfiled under the search bug entries:
 - The "What we'd do with more time" / noisy neighbour sections.
 - BUGS.md entry bodies — only headings normalized.
 - AI_USAGE.md agent log entries — left as honest log, not summarized.
+
+---
+
+## 2026-04-28 — Audit log coverage for permission denials (orchestrator)
+
+### User input (verbatim distrust signal)
+"⨯ Error [NotesError]: You are not a member of this organisation. Don't we log such errors in audit_logs table?"
+
+Followed by: "Log this in notes that i distrusted ai to implement all logs and reviewed implementation and asked to fix"
+
+### Why this is the right kind of distrust to record
+
+Logging is an area where agents (this one included) tend to ship the *visible* signal — `log.warn`, `log.error` — and skip the *durable* one — `audit()`. Both look like "logging" in code review at a glance, and the missing one is invisible in passing reads. The user surfaced this gap by inspecting an actual server-side error and asking the right question: is this in audit_log?
+
+The answer was no. The `audit()` writer in `src/lib/log/audit.ts` had `permission.denied` declared in its `AuditAction` union — so the *intent* to persist denials was there — but no caller ever emitted the action. The earlier session that added `log.warn` to the three `assertCan*` helpers stopped at structured logs and never wired through to `audit()`. `requireMemberRole` in `notes/queries.ts` had no logging at all.
+
+### What I changed
+Added `audit({ action: "permission.denied", ... })` alongside the existing `log.warn` at four denial sites (BUGS.md `29a9f98`):
+- `requireMemberRole` (queries.ts) — the path that produced the user's specific error. Two sub-cases: not-a-member, insufficient-role.
+- `assertCanReadNote / assertCanWriteNote / assertCanShareNote` (permissions.ts).
+
+Each row records the check name, the reason, the user, the org or note resource. A reviewer can `SELECT * FROM audit_log WHERE action = 'permission.denied'` and see actual denials.
+
+### What this teaches about agent-generated logging in general
+Three failure modes I've seen in this codebase:
+
+1. **Visible-only logging**: agents ship `console.log` or `log.info` but no `audit()` call. Caught here.
+2. **Structured-but-not-durable**: agents add `log.warn` to satisfy a "log permission denials" task literally, without asking whether the events should also persist. Caught here.
+3. **Action type declared but never emitted**: someone (possibly a previous agent) reserved `permission.denied` in the `AuditAction` union, which is *worse* than not declaring it at all — it falsely signals to a reviewer that the persistence path exists.
+
+For future agent work in this repo: logging tasks should produce both a structured log line AND, where the event is reviewable security or audit-relevant, an `audit()` call. The presence of an action type in `AuditAction` should be treated as a contract the implementation must honour.

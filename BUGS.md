@@ -301,3 +301,21 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **Fix:** Added `|| undefined` coercion before schema parse so empty strings from unset selects become `undefined`, which optional fields accept correctly.
 
 **Fix commit:** `6e227d4` on `main`
+
+---
+
+## [MED] [audit] Permission denials emitted log line but no audit_log row (commit 29a9f98)
+
+**Where:** `src/lib/auth/permissions.ts` (assertCan* helpers) and `src/lib/notes/queries.ts` (requireMemberRole)
+
+**Found by:** User, after seeing `Error [NotesError]: You are not a member of this organisation` in the dev console and asking whether the audit_log captured it.
+
+**What:** The `audit()` writer declared `permission.denied` as a valid action type, but no code path actually emitted it. `assertCan*` helpers had `log.warn` only; `requireMemberRole` had no logging at all. So a reviewer querying `audit_log WHERE action='permission.denied'` would always get an empty set, despite denials actively happening.
+
+**Why bad:** Two gaps:
+- Persistence: structured logs on Railway are stdout-only with no retention. The audit_log table is the durable record. Permission denials are exactly the kind of event that benefits from durable storage for security review.
+- Discoverability: the action type was reserved in the AuditAction union, suggesting denials *were* persisted, which was misleading for anyone reviewing the audit setup.
+
+**Fix:** Added `audit({ action: "permission.denied", ... })` next to the existing `log.warn` at four denial sites — three note-permission asserts and the org-membership requirement. Each audit row records the check name, the reason, and the resource so a reviewer can filter and investigate.
+
+**Fix commit:** `29a9f98` on `main`

@@ -333,3 +333,29 @@ Read: `summary/page.tsx` — found it already fully built. Gap was navigation to
 **What was right:** Reading all files first; then making the smallest set of focused edits per file rather than doing one pass per file.
 
 **What I wanted to do but didn't:** Restructuring REVIEW.md to put the per-area review notes alphabetically. The user said "Do not reorder large sections" — left as-is.
+
+## 2026-04-28 — Audit log permission denial coverage (orchestrator, no sub-agent)
+
+**Trigger:** User saw `Error [NotesError]: You are not a member of this organisation` in the dev console and asked: "Don't we log such errors in audit_logs table?" Followed by an explicit instruction to record that the user distrusted the existing logging implementation and reviewed it.
+
+**What I read:**
+- `src/lib/log/audit.ts` — confirmed `permission.denied` is declared in `AuditAction` but grep for `'permission.denied'` returned only the type declaration, no callers.
+- `src/lib/auth/permissions.ts` — confirmed `assertCan*` helpers had `log.warn` only.
+- `src/lib/notes/queries.ts` `requireMemberRole` — confirmed it threw `NotesError("FORBIDDEN", ...)` with zero logging.
+
+**What I did:**
+1. Added `audit({ action: "permission.denied", ... })` at the four denial sites alongside existing `log.warn`.
+2. Verified `.catch(() => null)` at the call site in `crud.ts` doesn't double-audit (the audit fires inside requireMemberRole before the throw, the catch just suppresses the re-throw).
+3. Logged in BUGS.md (`29a9f98`) and NOTES.md.
+
+**Why this matters for the agent-execution story:**
+
+The user's distrust signal was correct and worth recording. Agents producing "add logging" PRs default to the visible signal (stdout via pino) and skip the durable signal (audit_log). On a security-sensitive surface like permission denials, that gap is exactly what an attacker hopes for: their probing produces a stream of stdout lines that nobody retains, and the persistent audit table looks empty for `action='permission.denied'` so a security reviewer sees no events.
+
+Worse, in this codebase the `AuditAction` type already had `permission.denied` declared. That's a false-contract: the type signals the persistence path exists, the implementation never wires through. A reader skimming the audit module and grepping for the action would find the type definition and assume coverage, exactly the failure mode the user caught.
+
+**No sub-agent used** — four-edit fix with clear root cause from one type definition + one grep.
+
+**What was right:** Asking and answering the question "is the audit_log entry being written?" before adding the audit() call. Confirming the action type was declared but not emitted is what made this a documentation defect on top of a code defect.
+
+**What was wrong (in the previous session that added log.warn but not audit):** Treated the "log permission denials" task literally — added a log line — without checking whether the event should also persist. This is the class of agent failure the user is now flagging in their guidance.
