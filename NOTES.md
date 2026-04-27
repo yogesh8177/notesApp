@@ -296,102 +296,28 @@ baseline source files were edited on `main`.
   - prompt delimiter isolation
   - permission checks before note reads and summary acceptance
   - audit coverage for `request`, `fallback`, `complete`, `fail`, and `accept`
-## 2026-04-26 — search module takeover (orchestrator)
 
-Dewey's draft was never committed — untracked files only. Reviewed before
-committing; found three correctness issues and one missing feature.
+## 2026-04-27 — AI Summary: visible navigation + search helper (orchestrator)
 
-### Bugs fixed before first commit
+### What was built
+- `src/app/orgs/[orgId]/notes/[noteId]/layout.tsx` — new layout wrapping both the note detail page and the summary page with "Note" / "AI Summary" tab navigation. Additive: doesn't touch notes-core's `page.tsx`.
+- `src/lib/ai/summary-search.ts` — `getSummaryMatchingNoteIds(orgId, term)` queries `ai_summaries.structured` JSONB for term matches in `tldr` and `keyPoints` via Postgres `->>'tldr'` and `->'keyPoints'` operators.
 
-1. **Admin bypass removed** — `buildReadablePredicate` had an early return of
-   `sql\`true\`` for `owner`/`admin` roles. Visibility is user-relative; admins
-   cannot read private notes authored by others.
+### Cross-module boundary (search integration)
+Notes-core's `listNotesForUser` (`src/lib/notes/crud.ts`) must import and call `getSummaryMatchingNoteIds` to extend search to summary text:
+```typescript
+import { getSummaryMatchingNoteIds } from "@/lib/ai/summary-search";
 
-2. **Tag filter moved from HAVING to WHERE** — `input.tag` filtering was done in
-   `.having(bool_or(...))` post-aggregation. Moved to WHERE via EXISTS subquery
-   so it applies before GROUP BY and is more index-friendly.
-
-3. **`#tag` prefix path added** — spec requires a separate code path when the
-   query starts with `#`: skip FTS, look up tag_id, filter via `note_tags`.
-   Dewey's draft was missing this entirely.
-
-### What was kept
-
-- FTS query structure (tsvector + websearch_to_tsquery + ts_rank_cd) — correct.
-- trgm fallback in HAVING relevance gate — fine (this HAVING is a relevance
-  threshold, not a filter, so it doesn't break pagination).
-- ts_headline snippet with `<<`/`>>` sentinels — correct.
-- contracts.ts and URL param parser — no changes needed.
-- Route handler auth check pattern — correct.
-
-### Added
-
-- `search.execute` audit event (q truncated to 256, resultCount, latencyMs).
-- `SearchSubmitButton` client component with `useFormStatus` for pending state.
-- Result card titles now link to `/orgs/[orgId]/notes/[id]`.
-- Tag chips in results link to `#tag` prefix search.
-
-### Commits
-
-- `b7b20e8` feat(search): contracts, schemas, and URL param parser
-- `0e58a2e` feat(search): tsvector + trgm ranked query builder with visibility predicate
-- `143fa7b` feat(search): GET /api/search route handler
-- `9e5fc7a` feat(search): search results page — filters, snippet highlight, pagination
-## 2026-04-26 — Baseline vs worktree clarification (orchestrator)
-
-### Answer
-
-Module implementation work from the dispatched agents is landing in the
-non-baseline worktrees and branches, not in the frozen baseline worktree on
-`main`.
-
-### Important exception
-
-`main` still carries orchestration-doc edits made by the orchestrator:
-
-- `NOTES.md`
-- `AI_USAGE.md`
-
-Those are coordination artifacts, not module product code.
-
-### Current baseline-side drift to inspect, not overwrite
-
-- `docs/modules/seed-10k.md` is currently modified in the baseline worktree.
-  I did not revert it. It now contains explicit data-semantics guidance that
-  was not available to the first `seed-10k` dispatch and needs to be treated
-  as the current contract.
-
-## 2026-04-26 — Guide refresh and re-dispatch (orchestrator)
-
-### New information
-
-The baseline now contains module guides for:
-
-- `docs/modules/ai-summary.md`
-- `docs/modules/org-admin.md`
-- `docs/modules/deploy-ops.md`
-- `docs/modules/seed-10k.md`
-
-These guides were not available to the first pass of some module workers, so
-their original blocker conclusions are stale.
-
-### Actions
-
-- Resumed `Leibniz` on `agent/ai-summary` with the explicit `ai-summary` guide.
-- Resumed `Planck` on `agent/org-admin` with the explicit `org-admin` guide.
-- Marked `Ampere` and `Harvey` for follow-up alignment against the now-present
-  `seed-10k` and `deploy-ops` guides.
-- `Avicenna` (`notes-core`) is still the long-running active implementation
-  worker and remains isolated in `/private/tmp/notes-app-notes-core`.
-
-## 2026-04-26 — notes-core takeover (Avicenna worktree)
-
-### What happened
-- All 6 worktrees synced to main before any work started.
-- Surveyed Avicenna's output: service.ts (796 lines) and route files were each committed as a single massive commit — violated one-concern-per-commit rule.
-- Reset branch to after `errors + http` commit (dc9941f), then rebuilt all of Avicenna's work with proper granularity.
+// inside listNotesForUser, when term is present, extend the OR filter:
+const summaryNoteIds = term ? await getSummaryMatchingNoteIds(orgId, term) : [];
+// add to accessCondition or the OR:
+summaryNoteIds.length ? inArray(notes.id, summaryNoteIds) : undefined,
+```
+This is the only remaining cross-module dependency for full search coverage.
 
 ### Decisions
+- Layout approach chosen over modifying notes-core's `page.tsx` — the layout wraps child routes transparently, avoids merge conflicts with notes-core.
+- JSONB text search via `ilike((structured->>'tldr'), %)` — simple and consistent with the existing `ilike` search pattern on title/content. Avoids adding a new tsvector column to the schema.
 - Split service.ts into 4 focused modules: `queries.ts` (internal helpers), `crud.ts` (list/detail/create/update/delete), `shares.ts` (upsert/remove), `history.ts` (version snapshots).
 - Baked two bug fixes directly into the right commits rather than adding fix-commits on top:
   - `isRedirectError` rethrow → inside server actions (not a separate fix commit)
