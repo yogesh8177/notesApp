@@ -17,6 +17,8 @@ import {
   type OrgRole,
 } from "@/lib/db/schema";
 import { getMembership } from "@/lib/auth/org";
+import { audit } from "@/lib/log/audit";
+import { log } from "@/lib/log";
 import { NotesError } from "./errors";
 
 export const ROLE_RANK: Record<OrgRole, number> = {
@@ -64,9 +66,27 @@ export interface NoteShareRecord {
 export async function requireMemberRole(orgId: string, userId: string, minRole: OrgRole) {
   const membership = await getMembership(orgId, userId);
   if (!membership) {
+    log.warn({ orgId, userId, minRole }, "org.permission_denied:not_a_member");
+    await audit({
+      action: "permission.denied",
+      orgId,
+      userId,
+      resourceType: "org",
+      resourceId: orgId,
+      metadata: { check: "org:member", minRole, reason: "not_a_member" },
+    });
     throw new NotesError("FORBIDDEN", "You are not a member of this organisation.");
   }
   if (ROLE_RANK[membership.role] < ROLE_RANK[minRole]) {
+    log.warn({ orgId, userId, minRole, currentRole: membership.role }, "org.permission_denied:insufficient_role");
+    await audit({
+      action: "permission.denied",
+      orgId,
+      userId,
+      resourceType: "org",
+      resourceId: orgId,
+      metadata: { check: "org:role", minRole, currentRole: membership.role, reason: "insufficient_role" },
+    });
     throw new NotesError("FORBIDDEN", `This action requires at least ${minRole} access.`);
   }
   return membership.role;

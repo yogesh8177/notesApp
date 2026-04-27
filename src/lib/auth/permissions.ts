@@ -9,6 +9,7 @@ import {
 } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { log } from "@/lib/log";
+import { audit } from "@/lib/log/audit";
 
 /**
  * App-level permission helpers. These mirror the SQL helpers in
@@ -144,6 +145,13 @@ export async function assertCanReadNote(noteId: string, userId: string): Promise
   const p = await getNotePermission(noteId, userId);
   if (!p.canRead) {
     log.warn({ noteId, userId, reason: p.reason }, "note.permission_denied:read");
+    await audit({
+      action: "permission.denied",
+      userId,
+      resourceType: "note",
+      resourceId: noteId,
+      metadata: { check: "note:read", reason: p.reason ?? "forbidden" },
+    });
     throw new PermissionError(p.reason ?? "forbidden", "note:read", noteId);
   }
 }
@@ -152,6 +160,13 @@ export async function assertCanWriteNote(noteId: string, userId: string): Promis
   const p = await getNotePermission(noteId, userId);
   if (!p.canWrite) {
     log.warn({ noteId, userId, reason: p.reason }, "note.permission_denied:write");
+    await audit({
+      action: "permission.denied",
+      userId,
+      resourceType: "note",
+      resourceId: noteId,
+      metadata: { check: "note:write", reason: p.reason ?? "forbidden" },
+    });
     throw new PermissionError(p.reason ?? "forbidden", "note:write", noteId);
   }
 }
@@ -160,6 +175,13 @@ export async function assertCanShareNote(noteId: string, userId: string): Promis
   const p = await getNotePermission(noteId, userId);
   if (!p.canShare) {
     log.warn({ noteId, userId, reason: p.reason }, "note.permission_denied:share");
+    await audit({
+      action: "permission.denied",
+      userId,
+      resourceType: "note",
+      resourceId: noteId,
+      metadata: { check: "note:share", reason: p.reason ?? "forbidden" },
+    });
     throw new PermissionError(p.reason ?? "forbidden", "note:share", noteId);
   }
 }
