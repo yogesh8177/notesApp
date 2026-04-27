@@ -67,6 +67,25 @@
 - Left `/notes/[id]` attachment UI untouched because it is outside files
   ownership.
 
+### 2026-04-26 — seed-10k module outcome (`Ampere`, `agent/seed-10k`)
+
+- Implemented the large-seed workflow inside `scripts/seed/**`.
+- Covered deterministic org/user/note/version/share/file generation, auth-user
+  creation via Supabase admin API, batched inserts, and summary logging.
+- Requires a follow-up check against the newly-present module guide's stricter
+  data-semantics requirements.
+
+### 2026-04-26 — seed-10k follow-up audit (`Codex`, `agent/seed-10k`)
+
+- Re-read `CLAUDE.md` and `docs/modules/seed-10k.md`, then audited only
+  `scripts/seed/**` against the explicit module guide.
+- Found concrete mismatches in defaults, memberships, note distribution,
+  repeated-title semantics, version skew, file volume/type split, and final
+  summary output.
+- Patched only `scripts/seed/factories.ts` and `scripts/seed/run.ts`.
+- Verification was limited to `git diff --check`; `npm run typecheck` failed in
+  the local environment because `tsc` is not installed in this worktree.
+
 ## Things we don't trust agents to do (kept on the human side)
 
 - **Approving baseline contract changes** (schema, RLS, auth, logger). If a
