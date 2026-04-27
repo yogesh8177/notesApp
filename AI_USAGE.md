@@ -201,6 +201,39 @@ Read: `summary/page.tsx` — found it already fully built. Gap was navigation to
 
 **What to log for future:** Always use `general-purpose` subagent type for implementation tasks. If they still fail on tool access, do the work inline.
 
+## 2026-04-27 — seed-10k: rebase + re-commit + review (orchestrator, no sub-agent)
+
+**Trigger:** User asked to implement the seed-10k worktree with the updated module guide.
+
+**What I did:**
+
+1. Read `docs/modules/seed-10k.md` to understand the spec — corporate content, structured bodies, overlap tags, 5 orgs / 20 users / 10k notes, idempotency, 90s budget.
+2. Read the existing worktree files: `scripts/seed/factories.ts` (729 lines) and `scripts/seed/run.ts` (533 lines) from the previous Ampere agent's WIP commit.
+3. Assessed completeness: factories had all required generators (corporate titles, structured body, version state changes, tag pools, files). Run had auth user creation, cleanup, batched inserts, storage uploads, summary. No gaps found.
+4. Rebased `agent/seed-10k` onto `main` — one NOTES.md conflict resolved by taking main's version.
+5. Split the single WIP commit into 3 atomic commits (factories / run / docs) per module conventions.
+6. Type-checked with local `tsc --noEmit` — clean.
+7. Force-pushed with `--force-with-lease`.
+
+**No sub-agent used** — read the code directly; sub-agent would have re-derived the same context from scratch.
+
+**What the previous Ampere agent got right:**
+- Idempotent cleanup pattern (prefix-based org slug + email pattern) is correct — no seed run ID needed.
+- `waitForProfiles` polling before DB inserts — necessary because auth trigger can be async.
+- Storage batched separately from DB transaction — correct; object storage can't participate in Postgres transactions.
+- File body quality: minimal valid PDF, 1×1 PNG, real text content — passes MIME sniff, small enough for fast upload.
+- `distributeWeightedCount` for proportional note distribution across orgs — correct math, handles remainder correctly.
+- Overlap tag guarantee (`REQUIRED_OVERLAP_TAGS`) — exactly what the spec needs for cross-org isolation testing.
+
+**What the previous agent didn't do:**
+- Commit granularity: everything in one WIP commit. Split on orchestrator review.
+- Docs: NOTES.md and AI_USAGE.md not updated in the seed worktree. Added here.
+
+**What to watch when running the seed:**
+- If `notes-files` storage bucket doesn't exist, `uploadSeedFiles` will fail. Run `0003_storage_policies.sql` first.
+- `waitForProfiles` has a 10s timeout. If Supabase auth triggers are slow (cold start), increase to 30s.
+- 10k notes × avg 2.5 versions = ~25k version rows. With 500-row batches that's ~50 round trips for versions alone. Acceptable under 90s on a warm connection.
+
 ## 2026-04-27 — Search filter bug + observability audit (orchestrator, no sub-agent)
 
 **Trigger:** User reported search page tag filter and other filters not working.

@@ -341,3 +341,208 @@ their original blocker conclusions are stale.
 - Baseline `docs/modules/seed-10k.md` now includes explicit data-semantics
   requirements for realistic AI/search-friendly content. This implementation
   needs a guide-alignment pass rather than assumptions.
+Dispatch four parallel module agents — one per worktree — each working only within their owned paths. Orchestrator read the existing page source first to brief them precisely. Two sub-agent dispatch attempts failed immediately (Anthropic usage limit). Orchestrator executed all work directly.
+
+### Work done per module
+
+**notes-core** (`agent/notes-core-loading`):
+- `notes/_components/submit-button.tsx` — `SubmitButton` client component (`useFormStatus`)
+- `notes/loading.tsx` — skeleton for notes list (filter card + note cards)
+- `notes/[noteId]/loading.tsx` — skeleton for note detail (edit card + sharing card + recent versions)
+- `notes/[noteId]/history/loading.tsx` — skeleton for history (diff card + version list)
+- Wired `SubmitButton` into: create note, save/delete note, add/remove share forms
+
+**search** (`agent/search-loading`):
+- `search/loading.tsx` — skeleton for search page (search bar + result cards)
+
+**org-admin** (`agent/org-admin-loading`):
+- `_components/submit-button.tsx` — `SubmitButton` for raw `<button>` elements in org pages
+- `settings/loading.tsx` — skeleton (member list + invite form + danger zone)
+- `new/loading.tsx` — skeleton for create-org form
+- `invite/[token]/loading.tsx` — skeleton for invite accept page
+- Wired `SubmitButton` into: role save, send invite, leave org, create org
+
+**ai-summary** (`agent/ai-summary-loading`):
+- No owned pages exist yet on `main` — module agent has not shipped yet. Nothing to add; worktree branch preserved for when ai-summary ships its pages.
+
+### Commit shape
+
+Each concern is a separate commit per CLAUDE.md rules. SubmitButton → loading.tsx files → wiring → docs.
+
+
+---
+
+## 2026-04-27 — Production build fixes (orchestrator)
+
+### Problem
+`npm run build` failed with ESLint errors and TypeScript type errors across multiple files. None had been caught earlier because `tsc --noEmit` was used for type checks but the Next.js build runs ESLint + full type checking with stricter constraints.
+
+### Fixes applied
+
+- **`src/lib/log/index.ts`** — removed `eslint-disable` comment referencing `@typescript-eslint/no-require-imports` rule which is not in the ESLint config (`next/core-web-vitals`). Without the comment the `require()` passes cleanly.
+- **`src/app/orgs/invite/[token]/page.tsx`** — replaced bare `<a href="/orgs">` with `<Link>` (Next.js lint rule); fixed `result.error?.code` → `result.code` and `result.error?.message` → `result.message` (Err type has flat shape, not nested under `.error`).
+- **`src/app/orgs/[orgId]/files/files-client.tsx`** — wrapped `refreshFiles` in `useCallback([orgId])` and added it to `useEffect` deps to satisfy `react-hooks/exhaustive-deps`.
+- **`src/lib/ai/schema.ts`** — replaced loop-with-indexed-assignment with `Object.fromEntries` to avoid TypeScript union intersection error on discriminated field type.
+- **`src/lib/auth/permissions.ts`** — Drizzle infers `noteShares.permission` as the literal default `"view" | null` on left-join columns rather than the full `SharePermission` enum. Extracted `hasEditShare = (shareRaw as string | null) === "edit"` to bypass the TS2367 comparison error.
+- **`src/lib/files/index.ts`** — `row.uploader` is from a left join and can be null; added optional chaining.
+- **`src/lib/validation/result.ts`** — added `"UNPROCESSABLE"` to `ErrorCode` union (used in `orgs/roles.ts` and `orgs/invite.ts` but missing from the baseline enum).
+- **`src/lib/supabase/middleware.ts` + `server.ts`** — added explicit `{ name: string; value: string; options?: object }[]` type to `setAll` callback parameter.
+- **`src/lib/env.ts`** — removed `.min(1)` from `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (both `.optional()`). An empty string in `.env` caused `min(1)` to fail at build time during static route generation even though the vars are optional at runtime.
+
+## 2026-04-27 — Performance: eliminated double auth round-trip + dev pool fix (orchestrator)
+
+### Problem
+API calls taking 2–3 seconds on localhost. User reported consistent slowness across all pages.
+
+### Root causes identified
+
+1. **Double `getUser()` network call per request**
+   - `src/lib/supabase/middleware.ts` calls `supabase.auth.getUser()` to refresh the JWT (~150–300ms, network call to Supabase auth server)
+   - `src/lib/auth/session.ts` `getCurrentUser()` also called `supabase.auth.getUser()` — another ~150–300ms network call, every page, every request
+   - These are sequential from the user's perspective: middleware fires first, then layout + page render calls `getCurrentUser()`
+
+2. **Dev connection pool size = 1**
+   - `src/lib/db/client.ts` used `max: 1` in dev
+   - Notes list and note detail pages use `Promise.all([loadTagsForNotes, loadShareCounts, ...])` to batch queries
+   - With pool `max: 1`, those parallel promises serialized through one connection — no actual parallelism in dev
+
+### Fixes
+
+- **`src/lib/auth/session.ts`** — switched `getCurrentUser()` from `getUser()` to `getSession()`. The middleware already ran `getUser()` and refreshed the cookie. `getSession()` reads the JWT claims from the cookie locally — no network call. Security is unchanged: RLS enforces data isolation; middleware handles JWT refresh.
+- **`src/lib/db/client.ts`** — raised dev pool `max: 1 → 5` so concurrent queries in `Promise.all` actually run in parallel.
+
+### What's still there
+- The middleware `getUser()` call (~150ms) is unavoidable — it's what keeps the session cookie fresh.
+- Geographic latency if Railway region ≠ Supabase region — fix by aligning regions in Railway/Supabase dashboards.
+
+## 2026-04-27 — Features: files-in-notes + summary visibility + search (orchestrator)
+
+### Summary
+
+Two features dispatched to module agents; all three sub-agent attempts failed (environment denied Bash/tool access). Orchestrator implemented directly in both worktrees.
+
+### Files module (`agent/files`) — commit `1cd2d67`
+- `src/lib/files/index.ts`: added `countFilesForNote`, `getFilesForNote`, `MAX_FILES_PER_NOTE=5`. Cap enforced in `createUpload` before signed URL issuance.
+- `src/app/api/files/route.ts`: GET now handles `?noteId=` (note-scoped list) alongside `?orgId=` (org-scoped list).
+- `src/app/orgs/[orgId]/files/_components/note-file-uploader.tsx`: client component — X/5 counter, multi-file picker, upload progress, download/remove. Disabled at cap.
+- **Pending**: notes-core must import `<NoteFileUploader noteId={noteId} orgId={orgId} canWrite={...} />` into note create/edit forms.
+
+### AI Summary module (`agent/ai-summary`) — commit `a6fc868`
+- `src/app/orgs/[orgId]/notes/[noteId]/layout.tsx`: adds "Note" + "AI Summary" tab navigation. Wraps child routes; no notes-core files touched.
+- `src/lib/ai/summary-search.ts`: `getSummaryMatchingNoteIds(orgId, term)` — queries `ai_summaries.structured` JSONB for `tldr` + `keyPoints` matches via `ilike`.
+- **Pending**: notes-core must call `getSummaryMatchingNoteIds` in `listNotesForUser` to extend search to summary text. Integration snippet in that module's NOTES.md.
+
+## 2026-04-27 — Multi-tenancy audit + admin/private visibility decision
+
+### Audit result
+Full read of all query/mutation paths. App is multi-tenant safe:
+- Every note read goes through `assertCanReadNote` → joins `memberships ON notes.orgId` — user from org A gets `role: null` on org B's note, access denied
+- Every write calls `assertCanWriteNote` / `assertCanShareNote` / `requireOrgRole`
+- Search enforces `eq(notes.orgId, input.orgId)` + `getMembership` check + `buildReadablePredicate` SQL
+- Only active bug was `getSummaryMatchingNoteIds` missing org filter (fixed, BUGS.md)
+
+## 2026-04-27 — seed-10k: worktree rebased + implementation reviewed (orchestrator)
+
+### Context
+
+The `agent/seed-10k` worktree at `/private/tmp/notes-app-seed-10k` had a single WIP commit (`42cafc2`) from the previous session's `Ampere` agent. It was 6 commits behind `main` (doc and production fixes had landed on main after the seed branch diverged). The seed files themselves were complete — the WIP commit contained full implementations of both `factories.ts` and `run.ts`.
+
+### What was done
+
+1. **Rebase** — `agent/seed-10k` rebased onto `main`. Only conflict was `NOTES.md` (doc-only). Resolved by taking main's version (`git checkout --theirs`), preserving the seed implementation cleanly.
+2. **WIP commit split** — reset the single WIP commit and re-committed as 3 atomic commits per the module guide's conventions:
+   - `e91b1c3` `feat(seed): factories`
+   - `c47a0dd` `feat(seed): run`
+   - `9ce82df` `docs(seed): NOTES and AI_USAGE`
+3. **Type-check** — `tsc --noEmit` clean on the worktree.
+4. **Force-push** — `--force-with-lease` to `origin/agent/seed-10k` after rebase rewrote history.
+
+### Key design decisions in the seed
+
+**Why no faker.lorem for content:**
+The spec explicitly bans it. Graders use AI summary and search against this data. If content is gibberish, the AI summarizer produces garbage summaries and reviewers can't tell whether search is actually working. Corporate-style titles and structured bodies are necessary for meaningful end-to-end testing.
+
+**Title generation strategy:**
+`NOTE_SUBJECTS` × `TITLE_QUALIFIERS` combinatorics guarantee predictable, searchable titles ("Weekly Sync Q3", "Launch Checklist Sprint"). The same subject repeats across orgs intentionally — this is the primary test for search tenant isolation: searching "launch checklist" should scope to the user's org only.
+
+**Structured body format (`makeStructuredBody`):**
+Three sections: `## Context` (2–4 sentences of realistic prose), `## Decisions` (3 bullet points from a fixed pool), `## Next` (2 action items as `[ ]` markdown checkboxes). Version updates change `[ ]` to `[x]` and append a Resolution line. This makes the diff viewer show meaningful changes per version, which is required for the version history feature review.
+
+**Tag strategy:**
+5 required overlap tags (`roadmap`, `todo`, `meeting`, `retro`, `customer`) are guaranteed in every org. These overlap deliberately — graders can test that `#roadmap` tag search scopes to the current org only. Each org also gets org-specific specialist tags (infra/api/observability for Engineering orgs, ux/research/prototype for Design orgs, etc.) so tag facets look realistic.
+
+**Idempotency (cleanup-first pattern):**
+Seed is not fully idempotent (it can't reuse existing user IDs), so it's cleanup-then-reseed. Cleanup order matters: storage objects first (requires orgId FK for the query), then DB rows (org cascade handles notes/memberships/etc.), then auth users. The email prefix + org slug prefix pattern makes prior seed rows identifiable without needing a seed run ID.
+
+**Batching and transactions:**
+500-row batches keep Postgres statement memory manageable for 10k notes. All DB inserts run inside a single transaction — a failure rolls back everything. Storage uploads are outside the transaction (can't roll back object storage) but the catch block removes them. Upload batches are 100 concurrent requests (smaller than row batches) because each is a network call to Supabase Storage.
+
+**`waitForProfiles` pattern:**
+The `on_auth_user_created` trigger is synchronous in most Supabase configurations but the SDK's `admin.createUser` returns before the trigger runs in some edge cases. The polling loop (250ms interval, 10s timeout) avoids FK violations when inserting membership rows before the `public.users` mirror row exists.
+
+**File body content:**
+Real minimal valid file bodies: a 1×1 PNG (base64 constant), a minimal valid PDF with a title in the content stream, and markdown/txt as UTF-8 text. These are small enough for fast upload but valid enough that a MIME sniff won't reject them.
+
+---
+
+## 2026-04-27 — Search filter-only bug fix + observability gaps (orchestrator)
+
+### Search: filter-only searches were broken
+
+`shouldSearch = Boolean(filters.q)` in `search/page.tsx` meant tag filter, author filter, and date-range filters produced no results without a text query. `searchRequestSchema` also made `q` required, so the API route returned 400 for filter-only requests.
+
+**Fixes:**
+- `shouldSearch` → `hasActiveSearchFilters(filters)`
+- `searchRequestSchema` — `q` made optional
+- New `browseFiltered()` in `service.ts` — handles filter-only queries with `updatedAt DESC` sort, same base conditions (org isolation, visibility predicate, tag EXISTS, author, date range)
+- Guard added to audit log call: `(input.q ?? "").slice(0, 256)`
+
+**Multi-tenancy verified clean** — all search paths enforce `eq(notes.orgId, input.orgId)`, tag EXISTS pins to `t.org_id = input.orgId`, `searchByTag` looks up tag by `eq(tags.orgId, input.orgId)`.
+
+### Observability: permission denials and action failures not logged
+
+Audited all note permission helpers and server actions. Found two gaps:
+1. `assertCanReadNote/WriteNote/ShareNote` threw `PermissionError` silently — no log, no audit event
+2. All five note server actions swallowed errors into flash redirects with no server-side trace
+
+**Fixes:**
+- `permissions.ts`: `log.warn` before each `PermissionError` throw
+- `actions.ts`: `log.error` for `INTERNAL`-coded errors, `log.warn` for `FORBIDDEN`-coded errors, nothing for normal user errors
+
+**Rule going forward:** Any security-relevant denial must emit at least `log.warn`. Any unexpected failure must emit `log.error`. Expected user-facing errors (not found, conflict) go to flash only.
+
+---
+
+## 2026-04-27 — Auth security revert + file upload error visibility (orchestrator)
+
+### Auth: reverted getSession() → getUser()
+
+During the file upload debugging session, the Supabase SDK emitted a runtime warning:
+> "Using the user object as returned from `getSession()` or from some `onAuthStateChange()` events could be insecure. This value comes directly from the storage medium (usually cookies) and may not be authentic. Use `supabase.auth.getUser()` instead."
+
+The previous performance optimisation in `src/lib/auth/session.ts` switched `getCurrentUser()` to `getSession()` to eliminate a Supabase Auth network round-trip. The reasoning was that middleware's `getUser()` already validated the JWT on the same request. Supabase SDK's explicit warning indicates this is not a safe assumption — `getSession()` reads cookie claims without Auth-server verification, which is insufficient for a security boundary.
+
+**Decision:** Reverted to `getUser()`. The `cache()` wrapper still deduplicates to one network call per render tree. The DB pool fix (`max: 5`) is what actually resolved the bulk of the latency regression, not the `getSession()` switch.
+
+**Rule going forward:** Never use `getSession()` in server components, server actions, or route handlers for the authenticated user identity. Use `getUser()` always. `getSession()` is appropriate only for reading non-security-sensitive JWT claims (e.g., display hints) where stale data is acceptable.
+
+### Files: log real Supabase error before throwing UPSTREAM
+
+`createUpload()` in `src/lib/files/index.ts` was discarding the underlying `StorageError` entirely. Added `log.error({ err: error, bucket: FILES_BUCKET, storagePath }, "files.signed_url_failed")` before the throw. Now the real error (wrong bucket, missing key, RLS denial, etc.) appears in server logs.
+
+**Diagnosis of the user's upload error:** Most likely cause is `drizzle/0003_storage_policies.sql` not having been run — the `notes-files` storage bucket is created there. Run that migration in Supabase Dashboard → SQL Editor, or create the bucket manually as private. Alternatively, verify `SUPABASE_SERVICE_ROLE_KEY` is set correctly in `.env`.
+
+**Commit:** `8b14459` on `main`
+
+---
+
+### Conscious decision: admin visibility inconsistency
+
+**Behaviour:** Org admins can access any note (including private notes by other members) via direct URL/ID. However, private notes authored by others do NOT appear in search results for admins.
+
+**Why this is intentional:**
+- `computeCanRead` in `permissions.ts` grants admins full read access for support/moderation use cases — accessing a specific note when reported or when debugging
+- `buildReadablePredicate` in `search/service.ts` intentionally omits the admin bypass — search is a discovery tool and private notes should not be discoverable even by admins
+- This is the safer direction: admins can read if they have the ID, but cannot enumerate or discover private content through search
+
+**Decision: do not fix.** This asymmetry is acceptable and arguably correct UX for a multi-tenant notes product. If full admin enumeration is ever needed, add an explicit "admin mode" search flag rather than silently leaking private notes into search results.

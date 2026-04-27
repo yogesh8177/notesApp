@@ -104,7 +104,32 @@ Found a conflict for implementing org switcher in the baseline vs agent scoped c
 *pending:*
 
 ### Seed data
-*pending:*
+*orchestrator, deep — 2026-04-27:*
+
+**Reviewed deeply:**
+
+- **Idempotency** — cleanup runs before every seed. Identifies prior seed orgs by slug prefix (`seed-org-%`), prior auth users by email pattern (`seed-user-%@notes-app.local`). Storage objects queried by orgId before org DELETE so FK isn't lost. Cascade on orgs handles notes/memberships/tags. Orphan `public.users` rows cleaned separately in case the trigger fired but the auth user was then deleted. ✅
+- **Transaction boundary** — all DB inserts are inside a single `db.transaction(async tx => ...)`. Storage uploads are outside (correct — can't rollback object storage). On failure: catch block removes uploaded storage objects, then deletes auth users. ✅
+- **FK ordering** — insert order: orgs → memberships → tags → notes → noteVersions → noteTags → noteShares → files. Every FK dependency is satisfied before the dependent table is written. ✅
+- **`waitForProfiles` correctness** — polls `public.users` by ID array until count matches, 250ms interval, 10s timeout. Necessary because `on_auth_user_created` trigger is not guaranteed synchronous. Timeout throws — seed fails cleanly rather than silently inserting memberships with dangling FKs. ✅
+- **Multi-tenancy of content** — note titles repeat across orgs by design (`NOTE_SUBJECTS` cycles). This is the correct test fixture: if a grader searches "launch checklist" and sees notes from other orgs, the tenant isolation is broken. ✅
+- **Tag overlap guarantee** — `REQUIRED_OVERLAP_TAGS` (`roadmap`, `todo`, `meeting`, `retro`, `customer`) are unconditionally included in every org's tag set. A grader can `#roadmap` search in any org and verify results are scoped. ✅
+- **Visibility distribution** — `chooseVisibility()`: roll ≤10 → private, ≤80 → org, else shared. Produces ~10/70/20 split. Falls back `shared→org` when the org has fewer than 2 members (can't share with nobody). ✅
+- **Version state changes** — early versions use `[ ]` checkboxes; final version has `[x]` completions and a "Resolution: …" line. The diff viewer will show meaningful line-level changes rather than empty diffs. ✅
+- **File bodies** — minimal valid formats: real 1×1 PNG (base64 constant), minimal PDF with title in content stream, UTF-8 txt/md. MIME type matches extension. Small enough (< 1 KB each) that 100 concurrent uploads stay fast. ✅
+- **`distributeWeightedCount`** — proportional distribution with floor + remainder redistribution. Sum of returned counts == input total. Handles zero-weight orgs by normalizing to 1. ✅
+
+**Sampled:**
+
+- `buildShares` — filters out the author from recipient list before sampling. `shareCount` capped at `min(3, recipients.length)`. Permission 25% edit / 75% view. ✅
+- `makeSeedNoteTitle` — rotates through `NOTE_SUBJECTS × TITLE_QUALIFIERS`, deterministic given faker seed. ✅
+- `makeStructuredBody` — uses `faker.helpers.arrayElements` (without replacement) for bullet pool. Produces consistent markdown structure. ✅
+
+**Not reviewed / future TODOs:**
+
+- The seed uploads files to the `notes-files` bucket but does not verify the bucket exists before starting. A missing bucket causes `uploadSeedFiles` to throw mid-run, leaving auth users already created. The cleanup catch block handles this, but a pre-flight bucket check would give a cleaner error.
+- No progress indicator per-org during note generation (only per-batch during insert). With 10k notes the planning phase is silent for several seconds.
+- `waitForProfiles` polls all 20 user IDs in a single `inArray` query per tick. Acceptable at 20 users; would need pagination at 1000+.
 
 ### Deploy / ops
 *pending:*
