@@ -88,6 +88,18 @@
 > - Streaming user note content to an LLM without delimiter separation.
 > - Off-by-one in note version number on concurrent updates.
 
+## 2026-04-27 — Files: note-scoped upload + 5-cap (orchestrator, no sub-agent)
+
+Sub-agent dispatched twice, both times denied tool access by the environment. Orchestrator implemented directly.
+
+**What I did:** Read existing `src/lib/files/index.ts`, `validation.ts`, `api/files/route.ts`, `files-client.tsx`, and `types.ts` to understand the upload flow (signed URL → Supabase direct upload → metadata insert). Then:
+1. Added `countFilesForNote` + `getFilesForNote` to `index.ts`
+2. Wired 5-cap check into `createUpload` (count before signed URL issuance)
+3. Extended GET route to handle `?noteId=` alongside existing `?orgId=`
+4. Created `NoteFileUploader` client component
+
+**What was right:** Reusing `canReadAttachedNote` for `getFilesForNote` access checks — same visibility logic, no duplication.
+**What's pending:** Notes-core needs one import + render of `<NoteFileUploader>` in note create/edit forms. Documented in NOTES.md.
 ### 2026-04-26 — Module agent `Leibniz` retry with restored ai-summary guide
 
 - Re-ran after baseline added `CLAUDE.md` and `docs/modules/ai-summary.md`.

@@ -11,6 +11,10 @@ export const filesListQuerySchema = z.object({
   orgId: z.string().uuid(),
 });
 
+export const noteFilesQuerySchema = z.object({
+  noteId: z.string().uuid(),
+});
+
 export const createUploadSchema = z.object({
   orgId: z.string().uuid(),
   noteId: optionalUuid,

@@ -221,6 +221,27 @@ baseline source files were edited on `main`.
 
 - `git diff --check` passed.
 - Type-checking could not run in this worktree because local `tsc` is missing.
+
+## 2026-04-27 — Files: note-scoped upload with 5-file cap (orchestrator)
+
+### What was built
+- `src/lib/files/index.ts` — added `countFilesForNote`, `getFilesForNote`, `MAX_FILES_PER_NOTE = 5`. Cap enforced in `createUpload`: checks count before issuing signed URL, throws `UNPROCESSABLE` if at limit.
+- `src/lib/files/validation.ts` — added `noteFilesQuerySchema`.
+- `src/app/api/files/route.ts` — GET now accepts `?noteId=` for note-scoped file list; `?orgId=` path unchanged.
+- `src/app/orgs/[orgId]/files/_components/note-file-uploader.tsx` — client component showing attached files, upload picker (multi-select, disabled at cap), X/5 counter, download + remove per file.
+
+### Cross-module boundary
+`NoteFileUploader` is ready to be imported by notes-core's note create/edit forms:
+```tsx
+import { NoteFileUploader } from "@/app/orgs/[orgId]/files/_components/note-file-uploader";
+// render after the note form body:
+<NoteFileUploader noteId={noteId} orgId={orgId} canWrite={isAuthor || isAdmin} />
+```
+Notes-core owns `src/app/orgs/[orgId]/notes/**`. Integration into those forms requires a notes-core commit. The component is self-contained and safe to import.
+
+### Decisions
+- Cap is enforced server-side (count query before signed URL). UI disables the picker as a UX convenience, not a security control.
+- `getFilesForNote` joins memberships + noteShares to re-use the same `canReadAttachedNote` visibility logic as `listFilesForOrg`. No duplicated access logic.
 ---
 
 ## 2026-04-26 — ai-summary implementation resumed

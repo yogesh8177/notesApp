@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { assertCanWriteNote } from "@/lib/auth/permissions";
 import { getMembership } from "@/lib/auth/org";
 import { db } from "@/lib/db/client";
@@ -118,6 +118,78 @@ export async function listFilesForOrg(access: OrgFilesAccess): Promise<FileListI
   });
 }
 
+export const MAX_FILES_PER_NOTE = 5;
+
+export async function countFilesForNote(noteId: string): Promise<number> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(files)
+    .where(and(eq(files.noteId, noteId), isNull(files.deletedAt)));
+  return row?.total ?? 0;
+}
+
+export async function getFilesForNote(noteId: string, userId: string): Promise<FileListItem[]> {
+  const rows = await db
+    .select({
+      file: {
+        id: files.id,
+        orgId: files.orgId,
+        noteId: files.noteId,
+        fileName: files.fileName,
+        mimeType: files.mimeType,
+        sizeBytes: files.sizeBytes,
+        storagePath: files.storagePath,
+        uploadedBy: files.uploadedBy,
+        createdAt: files.createdAt,
+      },
+      uploader: {
+        email: users.email,
+        displayName: users.displayName,
+      },
+      note: {
+        id: notes.id,
+        title: notes.title,
+        authorId: notes.authorId,
+        visibility: notes.visibility,
+        deletedAt: notes.deletedAt,
+      },
+      sharePermission: noteShares.permission,
+      membershipRole: memberships.role,
+    })
+    .from(files)
+    .leftJoin(users, eq(users.id, files.uploadedBy))
+    .innerJoin(notes, eq(notes.id, files.noteId))
+    .leftJoin(noteShares, and(eq(noteShares.noteId, files.noteId), eq(noteShares.sharedWithUserId, userId)))
+    .leftJoin(memberships, and(eq(memberships.orgId, files.orgId), eq(memberships.userId, userId)))
+    .where(and(eq(files.noteId, noteId), isNull(files.deletedAt)))
+    .orderBy(desc(files.createdAt));
+
+  return rows.flatMap((row) => {
+    const canRead = canReadAttachedNote({
+      role: row.membershipRole,
+      sharePermission: row.sharePermission,
+      noteId: row.file.noteId,
+      noteAuthorId: row.note.authorId,
+      noteVisibility: row.note.visibility,
+      noteDeletedAt: row.note.deletedAt,
+      userId,
+    });
+    if (!canRead) return [];
+    return [{
+      id: row.file.id,
+      orgId: row.file.orgId,
+      noteId: row.file.noteId,
+      noteTitle: row.note.title,
+      fileName: row.file.fileName,
+      mimeType: row.file.mimeType,
+      sizeBytes: row.file.sizeBytes,
+      uploadedByLabel: row.uploader?.displayName ?? row.uploader?.email ?? "Unknown user",
+      createdAt: row.file.createdAt.toISOString(),
+      canDelete: row.file.uploadedBy === userId || hasOrgRole(row.membershipRole, "admin"),
+    }];
+  });
+}
+
 export async function createUpload(access: CreateUploadInput) {
   if (!hasOrgRole(access.role, "member")) {
     throw new FilesError("FORBIDDEN", "You need member access to upload files");
@@ -142,6 +214,14 @@ export async function createUpload(access: CreateUploadInput) {
     }
 
     await assertCanWriteNote(access.noteId, access.userId);
+
+    const existingCount = await countFilesForNote(access.noteId);
+    if (existingCount >= MAX_FILES_PER_NOTE) {
+      throw new FilesError(
+        "UNPROCESSABLE",
+        `Notes can have at most ${MAX_FILES_PER_NOTE} files attached`,
+      );
+    }
   }
 
   const fileId = randomUUID();
