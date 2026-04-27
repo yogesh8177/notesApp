@@ -80,21 +80,22 @@ export async function getNotePermission(
   const isOrgMember = row.role !== null;
   const isOrgAdmin = row.role !== null && ROLE_RANK[row.role] >= ROLE_RANK["admin"];
   const isOrgWriter = row.role !== null && ROLE_RANK[row.role] >= ROLE_RANK["member"];
-  const share: SharePermission | null = row.sharePerm;
+  const shareRaw = row.sharePerm;
+  const hasEditShare = (shareRaw as string | null) === "edit";
 
   const canRead = computeCanRead({
     visibility: row.note.visibility,
     isAuthor,
     isOrgMember,
     isOrgAdmin,
-    hasShare: share !== null,
+    hasShare: shareRaw !== null,
   });
 
   if (!canRead) {
     return { canRead: false, canWrite: false, canShare: false, canDelete: false, reason: "forbidden" };
   }
 
-  const canWrite = isAuthor || isOrgAdmin || share === "edit" || (row.note.visibility === "org" && isOrgWriter && share === "edit");
+  const canWrite = isAuthor || isOrgAdmin || hasEditShare || (row.note.visibility === "org" && isOrgWriter && hasEditShare);
   const canShare = isAuthor || isOrgAdmin;
   const canDelete = isAuthor || isOrgAdmin;
 

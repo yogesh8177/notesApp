@@ -107,3 +107,62 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Fix:** Inline guard that checks `error.digest.startsWith("NEXT_REDIRECT")` — the stable, version-agnostic signal Next.js uses internally for all redirect throws.
 - **Fix commit:** db1b195 (agent/notes-core)
 
+
+---
+
+### settings actions silently discarded errors (2026-04-27)
+
+- **What:** Invite send, role change, and leave-org buttons appeared to do nothing in the org settings page.
+- **Where:** `src/app/orgs/[orgId]/settings/page.tsx` — inline server actions `handleInvite`, `handleRoleChange`, `handleLeave`.
+- **Why bad:** All three called lib functions that return `Result<T>` but ignored the return value entirely. No `redirect` or `revalidatePath` call on success, no error handling on failure — so both success and error states were silently swallowed. Invites were actually being created (visible in audit_log) but the page never re-rendered.
+- **Fix:** Added `searchParams` prop, checked result in each action, added `redirect` with `?message=` on success and `?error=` on failure, flash notices rendered at top of page.
+- **Fix commit:** 2f66565 (main)
+
+---
+
+### next@15.1.0 security vulnerabilities flagged by Railway (2026-04-27)
+
+- **What:** Next.js 15.1.0 contains known security vulnerabilities.
+- **Where:** `package.json` — `"next": "15.1.0"`.
+- **Why bad:** Railway deployment pipeline flagged the pinned version as having CVEs. Running a vulnerable version in production exposes the app to potential exploits in the Next.js request handling layer.
+- **Fix:** Upgraded to `next@15.1.11` (patch-only bump, no breaking changes, no API surface change). All pre-existing type errors confirmed unchanged after upgrade.
+- **Fix commit:** 1dc225e (main)
+
+---
+
+### Dockerfile COPY fails — missing public/ directory (2026-04-27)
+
+- **What:** Docker build errors at `COPY --from=builder /app/public ./public` in the runner stage.
+- **Where:** `Dockerfile` runner stage, line ~48. `public/` was never created in the repo.
+- **Why bad:** Hard build failure — image cannot be produced, deployment blocked entirely.
+- **Fix:** Created `public/.gitkeep` so the directory exists in the build context.
+- **Fix commit:** 3972bdb (main)
+
+### Invalid [[services]] table in railway.toml (2026-04-27)
+
+- **What:** `[[services]]` array table is not valid Railway TOML for single-service deployments.
+- **Where:** `railway.toml` lines 16-17.
+- **Why bad:** Not a hard blocker but invalid config that Railway silently ignores; confusing and could cause issues on future Railway CLI versions.
+- **Fix:** Removed the block — `[build]` and `[deploy]` are sufficient for a single service.
+- **Fix commit:** 3972bdb (main)
+
+### NEXT_PUBLIC_* vars must be Railway build variables (2026-04-27)
+
+- **What:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL` are baked into the Next.js bundle at build time.
+- **Where:** Railway project settings — Build Variables tab.
+- **Why bad:** If only set as runtime env vars, the client bundle gets `undefined` for all three — Supabase client won't initialise, auth flows break silently.
+- **Fix:** Not a code fix. Must be configured in Railway: Settings → Variables → add each as a Build Variable in addition to (or instead of) a runtime variable. Dockerfile already has the correct `ARG` declarations.
+- **Fix commit:** N/A — operational configuration required.
+
+---
+
+### Production build blocked by 8 type/lint errors (2026-04-27)
+
+- **What:** `npm run build` failed — ESLint errors and TypeScript type errors across 10 files.
+- **Where:** `log/index.ts`, `invite/[token]/page.tsx`, `files-client.tsx`, `ai/schema.ts`, `auth/permissions.ts`, `files/index.ts`, `validation/result.ts`, `supabase/middleware.ts`, `supabase/server.ts`, `env.ts`.
+- **Why bad:** Deployment blocked. None were caught earlier because `tsc --noEmit` was used for spot-checks but the Next.js build runs stricter ESLint + full type compilation.
+- **Notable sub-bugs:**
+  - `"UNPROCESSABLE"` missing from `ErrorCode` union — used in 3 places but never declared; silent until build.
+  - Drizzle infers left-join enum default as literal type (`"view"` not `"view" | "edit"`) — required `(value as string) === "edit"` workaround.
+  - `ANTHROPIC_API_KEY: z.string().min(1).optional()` rejects empty string `""` — fails build when `.env` has the key blank.
+- **Fix commit:** 2ff2775 (main)

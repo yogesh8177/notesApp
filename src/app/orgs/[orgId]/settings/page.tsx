@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { SubmitButton } from "@/app/orgs/_components/submit-button";
 import { getMembership } from "@/lib/auth/org";
@@ -8,12 +9,18 @@ import { orgs } from "@/lib/db/schema";
 
 interface Props {
   params: Promise<{ orgId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+function first(v: string | string[] | undefined) {
+  return Array.isArray(v) ? v[0] : v;
 }
 
 export const metadata = { title: "Organisation Settings" };
 
-export default async function OrgSettingsPage({ params }: Props) {
+export default async function OrgSettingsPage({ params, searchParams }: Props) {
   const { orgId } = await params;
+  const query = await searchParams;
   const user = await requireUser(`/orgs/${orgId}/settings`);
 
   const [membership, members, pendingInvites, [org]] = await Promise.all([
@@ -29,25 +36,40 @@ export default async function OrgSettingsPage({ params }: Props) {
 
   const isAdmin = membership.role === "admin" || membership.role === "owner";
 
+  const message = first(query.message);
+  const error = first(query.error);
+
   async function handleInvite(formData: FormData) {
     "use server";
-    await inviteMember(orgId, {
+    const result = await inviteMember(orgId, {
       email: String(formData.get("email") ?? ""),
       role: String(formData.get("role") ?? "member") as "admin" | "member" | "viewer",
     });
+    if (!result.ok) {
+      redirect(`/orgs/${orgId}/settings?error=${encodeURIComponent(result.message)}`);
+    }
+    redirect(`/orgs/${orgId}/settings?message=${encodeURIComponent("Invite sent — link logged to audit trail.")}`);
   }
 
   async function handleRoleChange(formData: FormData) {
     "use server";
-    await changeRole(orgId, {
+    const result = await changeRole(orgId, {
       userId: String(formData.get("userId") ?? ""),
       role: String(formData.get("role") ?? "member") as "owner" | "admin" | "member" | "viewer",
     });
+    if (!result.ok) {
+      redirect(`/orgs/${orgId}/settings?error=${encodeURIComponent(result.message)}`);
+    }
+    redirect(`/orgs/${orgId}/settings?message=${encodeURIComponent("Role updated.")}`);
   }
 
   async function handleLeave() {
     "use server";
-    await leaveOrg(orgId);
+    const result = await leaveOrg(orgId);
+    if (!result.ok) {
+      redirect(`/orgs/${orgId}/settings?error=${encodeURIComponent(result.message)}`);
+    }
+    redirect("/orgs");
   }
 
   return (
@@ -57,6 +79,18 @@ export default async function OrgSettingsPage({ params }: Props) {
         <h1 className="text-2xl font-semibold">{org.name}</h1>
         <p className="text-sm text-muted-foreground font-mono">/{org.slug}</p>
       </section>
+
+      {/* Flash notices */}
+      {message && (
+        <p className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          {message}
+        </p>
+      )}
+      {error && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
       {/* Member list */}
       <section>

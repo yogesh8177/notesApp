@@ -59,6 +59,14 @@
 - `ai-summary` — worker `Leibniz` stopped without product code changes and logged blockers in the module worktree docs. Missing local contracts: root `CLAUDE.md`, owned app paths, and note-detail route shape.
 - `org-admin` — worker `Planck` stopped without product code changes and logged blockers in the module worktree docs. Missing local contracts: root `CLAUDE.md`, owned app paths, and org create/invite/settings behavior.
 
+### 2026-04-26 — files module outcome (`Galileo`, `agent/files`)
+
+- Implemented the files module inside owned paths only.
+- Added signed upload/download flows, org/note permission checks, list/delete,
+  and an org files UI.
+- Left `/notes/[id]` attachment UI untouched because it is outside files
+  ownership.
+
 ## Things we don't trust agents to do (kept on the human side)
 
 - **Approving baseline contract changes** (schema, RLS, auth, logger). If a
@@ -102,3 +110,62 @@ Sub-agent dispatched twice, both times denied tool access. Orchestrator implemen
 
 **What was right:** Layout approach adds "AI Summary" tab without touching notes-core's page.tsx. Clean merge.
 **What's pending:** Notes-core must call `getSummaryMatchingNoteIds` in `listNotesForUser` to include summary text in search. Exact integration snippet in NOTES.md.
+
+---
+
+## 2026-04-27 — Production build fixes (orchestrator, no sub-agent)
+
+**Trigger:** `npm run build` run to verify deployment readiness; failed with 8 distinct errors across 10 files.
+
+**What I did:** iterated build → fix → build until clean. No sub-agent — all errors were straightforward type/lint fixes resolvable from reading the failing file in isolation.
+
+**Errors and root causes:**
+
+| File | Error | Root cause |
+|---|---|---|
+| `log/index.ts` | ESLint rule not found | `@typescript-eslint/*` rules not in `next/core-web-vitals` config |
+| `invite/[token]/page.tsx` | `<a>` + `result.error.code` | Bare anchor; flat `Err` type misread as nested |
+| `files-client.tsx` | `useEffect` missing dep | `refreshFiles` not memoized |
+| `ai/schema.ts` | TS union intersection | Loop assignment across discriminated union |
+| `auth/permissions.ts` | TS2367 comparison | Drizzle infers literal default on left-join enum column |
+| `files/index.ts` | Possibly null | Left-join `uploader` not guarded |
+| `validation/result.ts` | `"UNPROCESSABLE"` missing | Baseline `ErrorCode` union never included it |
+| `supabase/middleware.ts` + `server.ts` | Implicit any | `setAll` callback param untyped |
+| `env.ts` | Build-time env failure | `.min(1).optional()` rejects empty string; AI keys empty in local `.env` |
+
+**Build result:** clean — all routes compile as dynamic (ƒ), no static prerender errors.
+
+## 2026-04-27 — Performance investigation: slow API calls (orchestrator, no sub-agent)
+
+**Task:** User reported 2–3 second API latency on localhost.
+
+**What I did:**
+1. Read `src/lib/db/client.ts` — connection pool config
+2. Read `src/lib/supabase/middleware.ts` — found first `getUser()` call
+3. Read `src/lib/auth/session.ts` — found second `getUser()` call (the real culprit)
+4. Read `src/lib/auth/org.ts` — confirmed `requireOrgRole` chains through `getCurrentUser()`
+5. Grep'd `src/lib/notes/` — confirmed `Promise.all` already used; identified pool `max: 1` as dev bottleneck
+
+**No sub-agent used** — sequential file reads answered the question; delegating would have added overhead with no benefit.
+
+**Changes made:**
+- `session.ts`: `getUser()` → `getSession()` (eliminates one ~150–300ms Supabase network call per page load)
+- `db/client.ts`: `max: 1 → 5` in dev (allows `Promise.all` DB queries to run in parallel)
+
+**What was right:** Correctly identified the double auth call as root cause. `getSession()` is safe here because the middleware's `getUser()` on the same request already validated and refreshed the JWT.
+
+**What to watch:** If Supabase ever adds server-side session revocation that needs to be enforced immediately (e.g. admin force-logout), `getSession()` won't catch revoked tokens mid-JWT-lifetime. For a notes app this is an acceptable tradeoff; revisit if auth requirements change.
+
+## 2026-04-27 — Files-in-notes + summary features (orchestrator)
+
+**Parallelization attempted:** dispatched ai-summary and files agents in parallel. All three sub-agent invocations failed — environment denies Bash/Read/Write/Edit tool access to spawned agents. Orchestrator absorbed both tasks.
+
+### Files feature
+Read: `index.ts`, `validation.ts`, `route.ts`, `files-client.tsx`, `types.ts`, `permissions.ts`, `errors.ts`. Identified upload flow (signed URL → Supabase Storage direct upload → metadata insert). Added cap check, note-scoped list endpoint, and `NoteFileUploader` component. No sub-agent.
+
+### AI Summary feature
+Read: `summary/page.tsx` — found it already fully built. Gap was navigation to it. Read schema to understand JSONB `structured` field. Created tab layout + JSONB search helper. No sub-agent.
+
+**What went wrong:** Sub-agents launched as `brand-voice:*` and unnamed agent types first, then re-dispatched as `general-purpose`. All denied tool access. Root cause: environment permission mode doesn't extend to spawned agents.
+
+**What to log for future:** Always use `general-purpose` subagent type for implementation tasks. If they still fail on tool access, do the work inline.
