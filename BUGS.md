@@ -282,3 +282,19 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **Fix:** Added `publicUrl(path, request)` helper in `src/lib/auth/public-url.ts`. Reads `x-forwarded-host` and `x-forwarded-proto` headers set by Railway's proxy to reconstruct the correct public base URL. Falls back to `request.nextUrl.origin` in local dev where no proxy is present. Both auth routes replaced all `request.nextUrl.clone()` redirects with `publicUrl()`.
 
 **Fix commit:** `99fcba4` on `main`
+
+---
+
+## [HIGH] Notes list filters silently ignored — all notes returned regardless of selection (commit 6e227d4)
+
+**Where:** `src/app/orgs/[orgId]/notes/page.tsx` — `notesListQuerySchema.safeParse()` call
+
+**Found by:** User, post-deployment, 2026-04-27
+
+**What:** HTML selects submit `""` when set to their default "All X" option. `notesListQuerySchema` uses `z.string().uuid()` for `authorId` and `z.enum(["private","org","shared"])` for `visibility` — both reject empty strings. So `safeParse` returned `success: false` on every request that had any unset filter, and the code fell back to `{ orgId, limit: 25 }` with no filters applied.
+
+**Why bad:** Selecting any filter appeared to work (the URL updated) but the result set never changed — all notes always returned. Completely broken filtering with no error surfaced to the user.
+
+**Fix:** Added `|| undefined` coercion before schema parse so empty strings from unset selects become `undefined`, which optional fields accept correctly.
+
+**Fix commit:** `6e227d4` on `main`
