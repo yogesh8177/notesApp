@@ -20,9 +20,14 @@ export default async function OrgsPage() {
     <main className="container mx-auto max-w-3xl py-10">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Your organisations</h1>
-        <Button asChild>
-          <Link href="/orgs/new">Create org</Link>
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button asChild>
+            <Link href="/orgs/new">Create org</Link>
+          </Button>
+          <form action="/auth/sign-out" method="POST">
+            <Button type="submit" variant="ghost">Sign out</Button>
+          </form>
+        </div>
       </div>
 
       {orgs.length === 0 ? (
