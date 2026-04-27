@@ -291,3 +291,21 @@ Read: `summary/page.tsx` — found it already fully built. Gap was navigation to
 **What was right:** `onConflictDoNothing` correctly handles the case where the trigger fires before the seed's upsert — no double-write, no error. The fix is both correct and idempotent.
 
 **Design principle logged:** Seed scripts that bootstrap auth users should always write the mirror profile rows themselves. Triggers are for the application request path; seeds own their own setup and cannot depend on application-layer trigger presence.
+
+## 2026-04-27 — Railway 0.0.0.0 redirect fix (orchestrator, no sub-agent)
+
+**Trigger:** User reported magic link and sign-out both redirecting to `https://0.0.0.0:8080` in Railway deployment.
+
+**What I did:**
+1. Read `auth/callback/route.ts` and `auth/sign-out/route.ts` — both used `request.nextUrl.clone()` to build redirect URLs
+2. Identified root cause: Railway's proxy sets `request.nextUrl.origin` to the internal bind address (`0.0.0.0:8080`), not the public domain
+3. Read `next.config.ts` — no proxy trust configuration present
+4. Created `src/lib/auth/public-url.ts` — reads `x-forwarded-host` / `x-forwarded-proto` proxy headers to reconstruct the correct public URL; falls back to `request.nextUrl.origin` in local dev
+5. Updated both auth routes to use `publicUrl()` for all redirects
+6. Typechecked — clean
+
+**No sub-agent used** — two-file fix with clear root cause.
+
+**What was wrong:** `request.nextUrl` in Next.js route handlers reflects the address the server is listening on internally, not the address the client used. This is a known gotcha with any Next.js deployment behind a reverse proxy. Should have been caught during deploy-ops review.
+
+**What was right:** Using `x-forwarded-host` is the correct pattern — Railway sets it reliably. The fallback to `request.nextUrl.origin` keeps local dev working without extra env config.

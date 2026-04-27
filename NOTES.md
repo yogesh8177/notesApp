@@ -572,3 +572,22 @@ Cursor logic is a class of code where agents produce plausible-looking but subtl
 3. Missing secondary sort key causing non-deterministic ordering and infinite cursors
 
 All three were checked manually before commit. The `(createdAt DESC, id ASC)` sort is deterministic because `id` is a UUID primary key unique per row. The cursor encodes the full ISO 8601 timestamp with ms precision. The `> PAGE_SIZE` check (not `>= PAGE_SIZE`) correctly identifies when the sentinel row is present.
+
+---
+
+## 2026-04-27 — Railway reverse-proxy redirect bug (orchestrator)
+
+### Problem
+Magic link login and sign-out redirected to `https://0.0.0.0:8080/...` in production. Railway binds Next.js internally on `0.0.0.0:8080`; `request.nextUrl.origin` reflects that internal address, not the public Railway domain. Both `auth/callback/route.ts` and `auth/sign-out/route.ts` cloned `request.nextUrl` for redirects, leaking the internal host to the browser.
+
+The OTP expired error was a secondary symptom — the magic link in the email pointed to the correct Railway URL (constructed from `window.location.origin` in the browser), but after Supabase processed the code it redirected using the server-side internal URL, making the link appear broken.
+
+### Fix
+`publicUrl(path, request)` in `src/lib/auth/public-url.ts`:
+- Reads `x-forwarded-host` (Railway proxy sets this to the public domain)
+- Reads `x-forwarded-proto` (Railway proxy sets this to `https`)
+- Falls back to `request.nextUrl.origin` locally where no proxy is present
+
+All `NextResponse.redirect` calls in both auth routes now use `publicUrl()`.
+
+**Commit:** `99fcba4` on `main`

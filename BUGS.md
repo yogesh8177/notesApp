@@ -266,3 +266,19 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **Fix:** Added `FILES_PAGE_SIZE = 50` limit, composite cursor `(createdAt DESC, id ASC)` for stable keyset pagination. API returns `nextCursor`; client accumulates pages with a "Load more" button. `PAGE_SIZE + 1` fetch detects whether a next page exists after JS visibility filtering.
 
 **Fix commit:** `481d8e9` on `main`
+
+---
+
+## [HIGH] Auth redirects resolve to 0.0.0.0:8080 on Railway (commit 99fcba4)
+
+**Where:** `src/app/auth/callback/route.ts` and `src/app/auth/sign-out/route.ts` — all `NextResponse.redirect()` calls
+
+**Found by:** User, post-deployment, 2026-04-27
+
+**What:** Both the magic-link callback and sign-out route built redirect URLs by cloning `request.nextUrl`. Behind Railway's reverse proxy, `request.nextUrl.origin` is the internal bind address (`0.0.0.0:8080`), not the public Railway domain. Every auth redirect sent the browser to `https://0.0.0.0:8080/...`.
+
+**Why bad:** Magic link login and sign-out were completely broken in production. Users clicking the email link landed on an unreachable address; the OTP then expired before they could recover.
+
+**Fix:** Added `publicUrl(path, request)` helper in `src/lib/auth/public-url.ts`. Reads `x-forwarded-host` and `x-forwarded-proto` headers set by Railway's proxy to reconstruct the correct public base URL. Falls back to `request.nextUrl.origin` in local dev where no proxy is present. Both auth routes replaced all `request.nextUrl.clone()` redirects with `publicUrl()`.
+
+**Fix commit:** `99fcba4` on `main`
