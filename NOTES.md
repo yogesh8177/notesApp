@@ -591,3 +591,58 @@ The OTP expired error was a secondary symptom — the magic link in the email po
 All `NextResponse.redirect` calls in both auth routes now use `publicUrl()`.
 
 **Commit:** `99fcba4` on `main`
+
+---
+
+## 2026-04-27 — What we'd do with more time (orchestrator)
+
+### Multi-tenancy hardening
+
+**RLS as the primary DB-layer isolation guarantee**
+Currently RLS policies enforce tenant isolation at the Postgres level, but the app also opens a direct superuser connection for the seed and for service-role operations (storage, admin auth). With more time:
+- Tighten the service-role surface — create a dedicated limited-privilege DB role for the app runtime that can only SELECT/INSERT/UPDATE/DELETE on app tables, and reserve the superuser connection strictly for migrations and seed scripts.
+- Add a nightly diff job that compares `getNotePermission()` output against what the RLS policies would allow for a sample of (user, note) pairs — catches app-vs-RLS drift before it becomes a production incident.
+- Property-based tests covering the full permission matrix: `visibility × role × is-author × share-edit/view × deleted`. Current test coverage is zero; any refactor of the permission helpers is unverified.
+
+**Per-org database isolation (beyond RLS)**
+For a genuinely multi-tenant SaaS at scale, RLS on a shared schema is a good start but has blast-radius risk if a policy is misconfigured. The next tier is schema-per-tenant or database-per-tenant, with a connection router that maps `orgId → connection string`. Supabase doesn't support this natively but a proxy layer (PgBouncer + custom routing) could achieve it. Overkill for this build; correct direction for a production product.
+
+---
+
+### Semantic search and file embedding
+
+**Embed files — PDFs, images, video transcripts**
+Current search indexes note title and content only. With more time:
+- **PDFs:** extract text at upload time (pdf-parse or Supabase Edge Function), chunk into ~500-token segments, embed with `text-embedding-3-small`, store vectors in `pgvector`. Search becomes a combined BM25 (tsvector) + cosine similarity (`<=>`) query ranked by RRF.
+- **Images:** run OCR (Tesseract or Google Vision API) at upload; embed the extracted text alongside the note content. For non-text images, generate an alt-text caption via a vision model and embed that.
+- **Video/audio:** transcribe with Whisper at upload, chunk transcript, embed segments. Attach timestamps so search results can deep-link to the relevant moment.
+- **Unified vector table:** `embeddings(id, org_id, source_type, source_id, chunk_index, content_chunk, embedding vector(1536))`. HNSW index on `embedding`. Query: cosine similarity filtered by `org_id` (tenant isolation must be enforced at the embedding query layer, not just the surface).
+
+---
+
+### Scale improvements
+
+**Search**
+- Move tsvector maintenance from runtime (`to_tsvector` on every query) to a stored generated column updated by trigger — eliminates per-query vectorisation at the cost of write amplification, which is the correct tradeoff for a read-heavy search workload.
+- Add a search result cache (Redis or Supabase Edge Cache) keyed on `(orgId, queryHash)` with a short TTL (30s). Most search queries in a given org repeat within a session.
+- For very large orgs (>100k notes), partition the `notes` table by `org_id` hash. Queries filtered by `org_id` scan only one partition; RLS policies and indexes follow the partition boundary.
+
+**File storage**
+- The current visibility filter on `listFilesForOrg` is post-query JS — fetch 51 rows, filter, may return fewer than 50 if many are on private notes. At scale, push visibility into the SQL WHERE clause using the same predicate as notes so the DB does the filtering and the page is always full.
+- Add virus/malware scanning on upload via a Supabase Storage webhook (ClamAV or a third-party scanner). Current implementation trusts all uploaded bytes.
+- MIME type validation server-side: currently trusts the client-supplied `mimeType`. Should sniff the actual magic bytes of the stored object after upload and reject mismatches.
+
+**AI summaries**
+- The in-memory rate limiter resets on process restart and doesn't work across multiple Railway replicas. Replace with a Redis counter keyed on `(userId, window)`.
+- Stream AI output through a Supabase Realtime channel instead of a route handler — decouples the generation lifecycle from the HTTP connection, survives client reconnects, and allows resuming a partially streamed summary.
+- Store embeddings of accepted summaries in the vector table above — summaries are high-signal compact representations of note content and produce better semantic search results than raw note text.
+
+**Observability**
+- Replace stdout-only pino logs with a real log sink (Logtail, Better Stack, or Datadog). Current Railway deployment has no log retention or alerting.
+- Add structured trace IDs propagated through server actions and route handlers so a single user action can be correlated across the audit log, application logs, and DB query logs.
+- Instrument `listNotesForUser`, `searchNotes`, and `listFilesForOrg` with p50/p95/p99 latency metrics. The 10k seed is the baseline; alert if p95 exceeds 500ms.
+
+**Auth**
+- Magic link OTP expiry is currently 1 hour (Supabase default). For a team notes app, shorten to 15 minutes and add a "resend" flow.
+- Add PKCE to the magic link flow (Supabase supports it) — prevents code interception in shared environments.
+- Session rotation on privilege escalation (role change within an org) — current sessions survive role downgrades until natural expiry.
