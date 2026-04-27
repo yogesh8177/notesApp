@@ -40,7 +40,14 @@ export default async function OrgLayout({
               Settings
             </Link>
           </nav>
-          <div className="ml-auto text-xs text-muted-foreground">role: {ctx.role}</div>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">role: {ctx.role}</span>
+            <form action="/auth/sign-out" method="POST">
+              <button type="submit" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
       </header>
       <main className="container mx-auto px-4 py-6">{children}</main>
