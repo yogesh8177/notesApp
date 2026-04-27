@@ -95,7 +95,7 @@ async function main() {
     const authUsers = await createSeedUsers(service, plan.users);
     createdUserIds.push(...authUsers.map((user) => user.id));
 
-    await waitForProfiles(db, authUsers.map((user) => user.id));
+    await ensureUserProfiles(db, authUsers);
 
     const prepared = prepareSeedRows(plan, authUsers);
 
@@ -366,23 +366,21 @@ async function createSeedUsers(
   return created;
 }
 
-async function waitForProfiles(
+async function ensureUserProfiles(
   db: DbClient,
-  userIds: string[],
+  authUsers: SeedAuthUser[],
 ) {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < 10_000) {
-    const rows = await db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(inArray(schema.users.id, userIds));
-
-    if (rows.length === userIds.length) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-
-  throw new Error("Timed out waiting for public.users rows created by auth trigger");
+  await db
+    .insert(schema.users)
+    .values(
+      authUsers.map((user) => ({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+      })),
+    )
+    .onConflictDoNothing();
+  console.log(`• ensured ${authUsers.length} public.users profiles`);
 }
 
 async function listSeedAuthUsers(
