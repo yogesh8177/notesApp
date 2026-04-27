@@ -166,3 +166,15 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
   - Drizzle infers left-join enum default as literal type (`"view"` not `"view" | "edit"`) — required `(value as string) === "edit"` workaround.
   - `ANTHROPIC_API_KEY: z.string().min(1).optional()` rejects empty string `""` — fails build when `.env` has the key blank.
 - **Fix commit:** 2ff2775 (main)
+
+## [ai-summary] getSummaryMatchingNoteIds missing org filter — cross-tenant note ID leak
+
+**What:** `src/lib/ai/summary-search.ts` `getSummaryMatchingNoteIds(orgId, term)` accepted `orgId` as a parameter but never used it in the query. It searched `ai_summaries` across all orgs and returned note IDs from every tenant.
+
+**Where:** `/private/tmp/notes-app-ai-summary/src/lib/ai/summary-search.ts` (initial commit `a6fc868`)
+
+**Why bad:** Any user searching notes in org A could surface note IDs (and therefore summary content) from org B if the search term matched. Even though the final notes-core query would filter by orgId before returning rows to the user, the intermediate function was not safe to call in isolation — defense in depth requires each function to enforce its own tenant boundary.
+
+**Fix:** Added `INNER JOIN notes ON notes.id = ai_summaries.note_id` with `eq(notes.orgId, orgId)` and `isNull(notes.deletedAt)` directly in the query. The org boundary is now enforced at the query site.
+
+**Fix commit:** `7a780c9` on `agent/ai-summary`
