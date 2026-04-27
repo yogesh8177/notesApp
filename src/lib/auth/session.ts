@@ -4,18 +4,16 @@ import { createClient } from "@/lib/supabase/server";
 import type { User } from "@supabase/supabase-js";
 
 /**
- * Get the current session user. `cache()` dedupes calls within one render.
+ * Get the current authenticated user. `cache()` dedupes calls within one render.
  * Returns null if not signed in.
  *
- * Uses getSession() (local JWT read) not getUser() (network call) because the
- * middleware already validated the JWT on this request via getUser(). Reading
- * the session from the cookie is safe here and avoids a redundant round-trip.
+ * Uses getUser() (contacts Supabase Auth server) to guarantee the token is
+ * authentic. cache() ensures this is at most one network call per render tree.
  */
 export const getCurrentUser = cache(async (): Promise<User | null> => {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return null;
-  return session.user;
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
 });
 
 /**

@@ -14,6 +14,7 @@ import {
   type SharePermission,
 } from "@/lib/db/schema";
 import { audit } from "@/lib/log/audit";
+import { log } from "@/lib/log";
 import { createServiceClient } from "@/lib/supabase/service";
 import { FILE_DOWNLOAD_URL_TTL_SECONDS, FILES_BUCKET } from "./constants";
 import { FilesError } from "./errors";
@@ -231,6 +232,7 @@ export async function createUpload(access: CreateUploadInput) {
 
   const { data, error } = await storage.createSignedUploadUrl(storagePath);
   if (error) {
+    log.error({ err: error, bucket: FILES_BUCKET, storagePath }, "files.signed_url_failed");
     throw new FilesError("UPSTREAM", "Could not create a signed upload URL");
   }
 
