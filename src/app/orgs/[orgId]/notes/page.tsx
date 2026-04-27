@@ -28,9 +28,9 @@ export default async function NotesPage({
 
   const parsed = notesListQuerySchema.safeParse({
     orgId,
-    visibility: first(query.visibility),
-    authorId: first(query.authorId),
-    tag: first(query.tag),
+    visibility: first(query.visibility) || undefined,
+    authorId: first(query.authorId) || undefined,
+    tag: first(query.tag) || undefined,
   });
 
   const data = await listNotesForUser(parsed.success ? parsed.data : { orgId, limit: 25 }, user.id);
