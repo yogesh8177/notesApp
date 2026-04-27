@@ -7,6 +7,7 @@ import { getNoteDetailForUser, toNotesErr } from "@/lib/notes";
 import { deleteNoteAction, removeShareAction, updateNoteAction, upsertShareAction } from "../actions";
 import { EmptyState, FlashNotice, SectionCard, VisibilityBadge, formatTimestamp } from "../components";
 import { SubmitButton } from "../_components/submit-button";
+import { NoteFileUploader } from "@/app/orgs/[orgId]/files/_components/note-file-uploader";
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -141,6 +142,10 @@ export default async function NoteDetailPage({
           </div>
         </SectionCard>
       ) : null}
+
+      <SectionCard title="Attachments" description="Up to 5 files per note. Files are stored in private org storage.">
+        <NoteFileUploader noteId={noteId} orgId={orgId} canWrite={note.permissions.canWrite} />
+      </SectionCard>
 
       {note.permissions.canShare ? (
         <SectionCard
