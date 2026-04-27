@@ -167,6 +167,46 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
   - `ANTHROPIC_API_KEY: z.string().min(1).optional()` rejects empty string `""` — fails build when `.env` has the key blank.
 - **Fix commit:** 2ff2775 (main)
 
+## [search] filter-only searches silently ignored — shouldSearch gated on q (2026-04-27)
+
+**Where:** `src/app/orgs/[orgId]/search/page.tsx:69` — `shouldSearch = Boolean(filters.q)`
+
+**Found by:** Orchestrator, user reported tag filter and other filters not working
+
+**What:** The search page only triggered a search when a text query (`q`) was present. Tag filter, author filter, and date-range filters submitted without a `q` all hit the "Enter a query" empty state instead of running. Additionally `searchRequestSchema` made `q: min(1)` required, so the `/api/search` route also returned 400 for filter-only requests.
+
+**Why bad:** Core feature broken. Selecting a tag from the autocomplete dropdown or filtering by author produced no results — silently, with no error shown.
+
+**Fix:**
+- `shouldSearch` changed to `hasActiveSearchFilters(filters)` — any active filter triggers a search.
+- `searchRequestSchema` made `q` optional (removed `.extend({ q: required })`).
+- Added `browseFiltered()` in `service.ts` — applies all base conditions with `updatedAt DESC` sort when `q` is absent. `searchNotes()` routes to it when `!input.q`.
+- Fixed `input.q.slice(0, 256)` in audit call — would throw when `q` is undefined.
+
+**Fix commit:** `b1399be` on `main`
+
+---
+
+## [observability] Permission denials and action failures logged nowhere (2026-04-27)
+
+**Where:** `src/lib/auth/permissions.ts` — `assertCan*` helpers; `src/app/orgs/[orgId]/notes/actions.ts` — all five catch blocks
+
+**Found by:** Orchestrator audit of logging coverage
+
+**What:** `assertCanReadNote`, `assertCanWriteNote`, `assertCanShareNote` threw `PermissionError` with zero log output. All five note server actions caught errors and redirected to a flash message without any `log.*` call. Result: no server-side trace of unauthorized access attempts or unexpected failures.
+
+**Why bad:** Two gaps:
+1. Security — if a user probes notes they can't access, there is no observable signal in logs or audit_log. Impossible to detect or alert on unauthorized access patterns.
+2. Reliability — DB errors, deadlocks, and unexpected exceptions silently become flash messages with "Unexpected notes error". No ops signal to investigate.
+
+**Fix:**
+- `permissions.ts`: `assertCan*` helpers emit `log.warn({ noteId, userId, reason }, "note.permission_denied:<action>")` before throwing.
+- `actions.ts`: each catch block maps the error with `toNotesErr`, then `log.error` for `INTERNAL` codes, `log.warn` for `FORBIDDEN` codes. Expected user errors (`NOT_FOUND`, `CONFLICT`) are not logged — they surface as flash messages and are not actionable ops events.
+
+**Fix commit:** `31741f3` on `main`
+
+---
+
 ## [auth] getCurrentUser() used getSession() — unauthenticated session data (2026-04-27)
 
 **Where:** `src/lib/auth/session.ts:14` — `getCurrentUser()` implementation

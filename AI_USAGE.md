@@ -182,6 +182,25 @@ Read: `summary/page.tsx` — found it already fully built. Gap was navigation to
 
 **What to log for future:** Always use `general-purpose` subagent type for implementation tasks. If they still fail on tool access, do the work inline.
 
+## 2026-04-27 — Search filter bug + observability audit (orchestrator, no sub-agent)
+
+**Trigger:** User reported search page tag filter and other filters not working.
+
+**What I did:**
+1. Read `page.tsx`, `service.ts`, `contracts.ts`, `index.ts` — identified two root causes: `shouldSearch = Boolean(filters.q)` and `searchRequestSchema` making `q` required
+2. Added `browseFiltered()` to handle filter-only queries with no FTS involved
+3. Made `q` optional in `searchRequestSchema`; fixed `input.q.slice()` crash in audit
+4. Verified multi-tenancy across all three search paths (FTS, tag-prefix, browse)
+5. Audited logging coverage across permissions.ts and all server actions — found no logging on denials or failures
+6. Added `log.warn` to all three `assertCan*` helpers in `permissions.ts`
+7. Added `log.error`/`log.warn` to all five note server action catch blocks
+
+**No sub-agent used** — all in owned paths, sequential file reads sufficient.
+
+**What was wrong:** `shouldSearch` gating on `filters.q` was an obvious oversight — the filter form has 6 fields, only one of which is the text query. Should have been `hasActiveSearchFilters` from the start.
+
+**What was right:** The `browseFiltered` → `searchByTag` → `searchByFts` routing pattern in `searchNotes` is clean — each path shares `buildBaseConditions` (same org/visibility/tag/author/date enforcement) and only differs in ranking/ordering.
+
 ## 2026-04-27 — Auth revert + file upload error logging (orchestrator, no sub-agent)
 
 **Trigger:** Supabase SDK emitted a runtime security warning about `getSession()` during file upload debugging. User asked to log both fixes in the MD files.

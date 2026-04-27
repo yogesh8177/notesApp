@@ -537,6 +537,34 @@ Full read of all query/mutation paths. App is multi-tenant safe:
 - Search enforces `eq(notes.orgId, input.orgId)` + `getMembership` check + `buildReadablePredicate` SQL
 - Only active bug was `getSummaryMatchingNoteIds` missing org filter (fixed, BUGS.md)
 
+## 2026-04-27 — Search filter-only bug fix + observability gaps (orchestrator)
+
+### Search: filter-only searches were broken
+
+`shouldSearch = Boolean(filters.q)` in `search/page.tsx` meant tag filter, author filter, and date-range filters produced no results without a text query. `searchRequestSchema` also made `q` required, so the API route returned 400 for filter-only requests.
+
+**Fixes:**
+- `shouldSearch` → `hasActiveSearchFilters(filters)`
+- `searchRequestSchema` — `q` made optional
+- New `browseFiltered()` in `service.ts` — handles filter-only queries with `updatedAt DESC` sort, same base conditions (org isolation, visibility predicate, tag EXISTS, author, date range)
+- Guard added to audit log call: `(input.q ?? "").slice(0, 256)`
+
+**Multi-tenancy verified clean** — all search paths enforce `eq(notes.orgId, input.orgId)`, tag EXISTS pins to `t.org_id = input.orgId`, `searchByTag` looks up tag by `eq(tags.orgId, input.orgId)`.
+
+### Observability: permission denials and action failures not logged
+
+Audited all note permission helpers and server actions. Found two gaps:
+1. `assertCanReadNote/WriteNote/ShareNote` threw `PermissionError` silently — no log, no audit event
+2. All five note server actions swallowed errors into flash redirects with no server-side trace
+
+**Fixes:**
+- `permissions.ts`: `log.warn` before each `PermissionError` throw
+- `actions.ts`: `log.error` for `INTERNAL`-coded errors, `log.warn` for `FORBIDDEN`-coded errors, nothing for normal user errors
+
+**Rule going forward:** Any security-relevant denial must emit at least `log.warn`. Any unexpected failure must emit `log.error`. Expected user-facing errors (not found, conflict) go to flash only.
+
+---
+
 ## 2026-04-27 — Auth security revert + file upload error visibility (orchestrator)
 
 ### Auth: reverted getSession() → getUser()
