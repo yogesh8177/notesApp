@@ -527,3 +527,23 @@ Two features dispatched to module agents; all three sub-agent attempts failed (e
 - `src/app/orgs/[orgId]/notes/[noteId]/layout.tsx`: adds "Note" + "AI Summary" tab navigation. Wraps child routes; no notes-core files touched.
 - `src/lib/ai/summary-search.ts`: `getSummaryMatchingNoteIds(orgId, term)` — queries `ai_summaries.structured` JSONB for `tldr` + `keyPoints` matches via `ilike`.
 - **Pending**: notes-core must call `getSummaryMatchingNoteIds` in `listNotesForUser` to extend search to summary text. Integration snippet in that module's NOTES.md.
+
+## 2026-04-27 — Multi-tenancy audit + admin/private visibility decision
+
+### Audit result
+Full read of all query/mutation paths. App is multi-tenant safe:
+- Every note read goes through `assertCanReadNote` → joins `memberships ON notes.orgId` — user from org A gets `role: null` on org B's note, access denied
+- Every write calls `assertCanWriteNote` / `assertCanShareNote` / `requireOrgRole`
+- Search enforces `eq(notes.orgId, input.orgId)` + `getMembership` check + `buildReadablePredicate` SQL
+- Only active bug was `getSummaryMatchingNoteIds` missing org filter (fixed, BUGS.md)
+
+### Conscious decision: admin visibility inconsistency
+
+**Behaviour:** Org admins can access any note (including private notes by other members) via direct URL/ID. However, private notes authored by others do NOT appear in search results for admins.
+
+**Why this is intentional:**
+- `computeCanRead` in `permissions.ts` grants admins full read access for support/moderation use cases — accessing a specific note when reported or when debugging
+- `buildReadablePredicate` in `search/service.ts` intentionally omits the admin bypass — search is a discovery tool and private notes should not be discoverable even by admins
+- This is the safer direction: admins can read if they have the ID, but cannot enumerate or discover private content through search
+
+**Decision: do not fix.** This asymmetry is acceptable and arguably correct UX for a multi-tenant notes product. If full admin enumeration is ever needed, add an explicit "admin mode" search flag rather than silently leaking private notes into search results.
