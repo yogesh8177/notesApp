@@ -681,6 +681,9 @@ The AI summary rate limiter is per-process in-memory. Across multiple Railway re
 **Per-org request rate limiting**
 No org-level rate limiting at the API layer today. One org scripting the notes API can generate thousands of requests per second, starving other tenants at the load balancer level. Add a Redis sliding-window rate limit keyed on `orgId` in middleware, separate from per-user limits.
 
+**Single tags search***
+No multi tag search at the moment, one tag at a time can be searched via dropdown flow.
+
 ### Infrastructure layer
 
 **Shared Railway container**
