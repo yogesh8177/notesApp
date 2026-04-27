@@ -13,7 +13,7 @@ function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export const metadata = { title: "Notes" };
+export const metadata = { title: "Notes Orgs" };
 
 export default async function NotesPage({
   params,
@@ -28,7 +28,6 @@ export default async function NotesPage({
 
   const parsed = notesListQuerySchema.safeParse({
     orgId,
-    q: first(query.q),
     visibility: first(query.visibility),
     authorId: first(query.authorId),
     tag: first(query.tag),
@@ -58,9 +57,8 @@ export default async function NotesPage({
           <CardDescription>Search within notes you can currently read in this organisation.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-4">
+          <form className="grid gap-3 md:grid-cols-3">
             <input type="hidden" name="orgId" value={orgId} />
-            <Input name="q" placeholder="Search title or content" defaultValue={first(query.q) ?? ""} />
             <select
               name="visibility"
               defaultValue={first(query.visibility) ?? ""}
@@ -95,7 +93,7 @@ export default async function NotesPage({
                 </option>
               ))}
             </select>
-            <div className="md:col-span-4 flex items-center gap-3">
+            <div className="md:col-span-3 flex items-center gap-3">
               <Button type="submit">Apply filters</Button>
               <Button variant="ghost" asChild>
                 <Link href={`/orgs/${orgId}/notes`}>Reset</Link>
@@ -146,7 +144,6 @@ export default async function NotesPage({
         initialNotes={data.notes}
         initialNextCursor={data.nextCursor}
         query={{
-          q: first(query.q),
           visibility: first(query.visibility),
           authorId: first(query.authorId),
           tag: first(query.tag),

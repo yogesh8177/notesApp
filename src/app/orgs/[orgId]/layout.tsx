@@ -23,7 +23,7 @@ export default async function OrgLayout({
       <header className="border-b bg-background">
         <div className="container mx-auto flex h-14 items-center gap-4 px-4">
           <Link href="/orgs" className="text-sm font-semibold">
-            Notes
+            Orgs
           </Link>
           <Separator orientation="vertical" className="h-5" />
           <nav className="flex items-center gap-4 text-sm">
