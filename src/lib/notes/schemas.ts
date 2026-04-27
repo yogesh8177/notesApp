@@ -9,6 +9,9 @@ export const notesListQuerySchema = z.object({
   visibility: z.enum(visibilityValues).optional(),
   authorId: z.string().uuid().optional(),
   tag: z.string().trim().max(64).optional(),
+  // Cursor pagination. cursor = base64url(JSON { updatedAt, id }).
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 export const noteInputSchema = z.object({

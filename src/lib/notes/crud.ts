@@ -3,7 +3,7 @@
  * Each mutation writes a note_versions snapshot in the same transaction
  * and emits an audit event.
  */
-import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   noteShares,
@@ -69,10 +69,38 @@ export interface NoteDetail {
 
 // ---------------------------------------------------------------------------
 
+export interface NotesCursor {
+  updatedAt: string; // ISO string
+  id: string;
+}
+
+export function encodeCursor(updatedAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify({ updatedAt: updatedAt.toISOString(), id })).toString("base64url");
+}
+
+function decodeCursor(cursor: string): NotesCursor | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString()) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "updatedAt" in parsed &&
+      "id" in parsed &&
+      typeof (parsed as NotesCursor).updatedAt === "string" &&
+      typeof (parsed as NotesCursor).id === "string"
+    ) {
+      return parsed as NotesCursor;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listNotesForUser(
   input: NotesListQuery,
   userId: string,
-): Promise<{ notes: NoteListItem[]; members: OrgMemberOption[]; availableTags: string[] }> {
+): Promise<{ notes: NoteListItem[]; nextCursor: string | null; members: OrgMemberOption[]; availableTags: string[] }> {
   const { orgId } = input;
   const membership = await requireMemberRole(orgId, userId, "viewer").catch(() => null);
   if (!membership) {
@@ -94,6 +122,18 @@ export async function listNotesForUser(
         ),
       );
 
+  const limit = input.limit ?? 25;
+  const cursorData = input.cursor ? decodeCursor(input.cursor) : null;
+  const cursorCondition = cursorData
+    ? or(
+        lt(notes.updatedAt, new Date(cursorData.updatedAt)),
+        and(
+          sql`${notes.updatedAt} = ${new Date(cursorData.updatedAt)}`,
+          lt(notes.id, cursorData.id),
+        ),
+      )
+    : undefined;
+
   const filters = [
     eq(notes.orgId, orgId),
     isNull(notes.deletedAt),
@@ -102,6 +142,7 @@ export async function listNotesForUser(
     input.authorId ? eq(notes.authorId, input.authorId) : undefined,
     term ? or(ilike(notes.title, `%${term}%`), ilike(notes.content, `%${term}%`)) : undefined,
     normalizedTag ? eq(tags.name, normalizedTag) : undefined,
+    cursorCondition,
   ].filter(Boolean);
 
   const rows = await db
@@ -124,9 +165,15 @@ export async function listNotesForUser(
     .leftJoin(noteTags, eq(noteTags.noteId, notes.id))
     .leftJoin(tags, eq(tags.id, noteTags.tagId))
     .where(and(...filters))
-    .orderBy(desc(notes.updatedAt));
+    .orderBy(desc(notes.updatedAt), desc(notes.id))
+    .limit(limit + 1);
 
-  const noteIds = rows.map((r) => r.id);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = page.at(-1);
+  const nextCursor = hasMore && lastRow ? encodeCursor(lastRow.updatedAt, lastRow.id) : null;
+
+  const noteIds = page.map((r) => r.id);
   const [tagMap, shareCountMap, members, tagRows] = await Promise.all([
     loadTagsForNotes(noteIds),
     loadShareCounts(noteIds),
@@ -135,7 +182,7 @@ export async function listNotesForUser(
   ]);
 
   return {
-    notes: rows.map((row) => ({
+    notes: page.map((row) => ({
       id: row.id,
       orgId: row.orgId,
       title: row.title,
@@ -149,6 +196,7 @@ export async function listNotesForUser(
       shareCount: shareCountMap.get(row.id) ?? 0,
       isAuthor: row.authorId === userId,
     })),
+    nextCursor,
     members,
     availableTags: tagRows.map((r) => r.name),
   };

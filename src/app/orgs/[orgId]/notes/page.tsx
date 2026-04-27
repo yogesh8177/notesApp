@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { requireUser } from "@/lib/auth/session";
 import { listNotesForUser, notesListQuerySchema } from "@/lib/notes";
 import { createNoteAction } from "./actions";
-import { EmptyState, FlashNotice, VisibilityBadge, formatTimestamp } from "./components";
+import { FlashNotice } from "./components";
+import { NotesList } from "./_components/notes-list";
 import { SubmitButton } from "./_components/submit-button";
 
 function first(value: string | string[] | undefined) {
@@ -33,7 +34,7 @@ export default async function NotesPage({
     tag: first(query.tag),
   });
 
-  const data = await listNotesForUser(parsed.success ? parsed.data : { orgId }, user.id);
+  const data = await listNotesForUser(parsed.success ? parsed.data : { orgId, limit: 25 }, user.id);
   const myRole = data.members.find((member) => member.id === user.id)?.role ?? "viewer";
   const canCreate = myRole !== "viewer";
   const createAction = createNoteAction.bind(null, orgId);
@@ -140,55 +141,17 @@ export default async function NotesPage({
         </Card>
       ) : null}
 
-      {data.notes.length === 0 ? (
-        <EmptyState
-          title="No matching notes"
-          description="Try widening the filters, or create the first note if your role allows it."
-        />
-      ) : (
-        <div className="grid gap-4">
-          {data.notes.map((note) => (
-            <Card key={note.id} className="transition hover:border-foreground/20">
-              <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-xl">
-                      <Link href={`/orgs/${orgId}/notes/${note.id}`} className="hover:underline">
-                        {note.title}
-                      </Link>
-                    </CardTitle>
-                    <VisibilityBadge visibility={note.visibility} />
-                  </div>
-                  <CardDescription>
-                    {note.author.displayName ?? note.author.email} · updated {formatTimestamp(note.updatedAt)}
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/orgs/${orgId}/notes/${note.id}`}>Open</Link>
-                  </Button>
-                  <Button asChild variant="ghost" size="sm">
-                    <Link href={`/orgs/${orgId}/notes/${note.id}/history`}>History</Link>
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">{note.excerpt || "No content yet."}</p>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>v{note.currentVersion}</span>
-                  <span>·</span>
-                  <span>{note.shareCount} share{note.shareCount === 1 ? "" : "s"}</span>
-                  {note.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-muted px-2 py-1 font-medium text-foreground">
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <NotesList
+        orgId={orgId}
+        initialNotes={data.notes}
+        initialNextCursor={data.nextCursor}
+        query={{
+          q: first(query.q),
+          visibility: first(query.visibility),
+          authorId: first(query.authorId),
+          tag: first(query.tag),
+        }}
+      />
     </div>
   );
 }
