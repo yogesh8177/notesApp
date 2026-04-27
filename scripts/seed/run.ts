@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { inArray, like, sql as drizzleSql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "@/lib/db/schema";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
@@ -52,8 +53,8 @@ interface StoragePathRow {
   storagePath: string;
 }
 
-type DbClient = any;
-type TxClient = any;
+type DbClient = PostgresJsDatabase<typeof schema>;
+type TxClient = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
 interface PreparedSeedData {
