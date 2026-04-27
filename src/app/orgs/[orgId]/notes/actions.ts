@@ -12,6 +12,7 @@ function isRedirectError(e: unknown): boolean {
     (e as { digest: string }).digest.startsWith("NEXT_REDIRECT")
   );
 }
+import { log } from "@/lib/log";
 import { requireUser } from "@/lib/auth/session";
 import {
   createNote,
@@ -65,7 +66,10 @@ export async function createNoteAction(orgId: string, formData: FormData) {
     redirect(withFlash(`/orgs/${orgId}/notes/${note.id}`, "message", "Note created."));
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    redirect(withFlash(`/orgs/${orgId}/notes`, "error", toNotesErr(error).message));
+    const mapped = toNotesErr(error);
+    if (mapped.code === "INTERNAL") log.error({ err: error, orgId }, "notes.create.failed");
+    else if (mapped.code === "FORBIDDEN") log.warn({ orgId, userId: user.id }, "notes.create.denied");
+    redirect(withFlash(`/orgs/${orgId}/notes`, "error", mapped.message));
   }
 }
 
@@ -89,7 +93,10 @@ export async function updateNoteAction(orgId: string, noteId: string, formData: 
     redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "message", "Note updated."));
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", toNotesErr(error).message));
+    const mapped = toNotesErr(error);
+    if (mapped.code === "INTERNAL") log.error({ err: error, orgId, noteId }, "notes.update.failed");
+    else if (mapped.code === "FORBIDDEN") log.warn({ orgId, noteId, userId: user.id }, "notes.update.denied");
+    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", mapped.message));
   }
 }
 
@@ -101,7 +108,10 @@ export async function deleteNoteAction(orgId: string, noteId: string) {
     redirect(withFlash(`/orgs/${orgId}/notes`, "message", "Note deleted."));
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", toNotesErr(error).message));
+    const mapped = toNotesErr(error);
+    if (mapped.code === "INTERNAL") log.error({ err: error, orgId, noteId }, "notes.delete.failed");
+    else if (mapped.code === "FORBIDDEN") log.warn({ orgId, noteId, userId: user.id }, "notes.delete.denied");
+    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", mapped.message));
   }
 }
 
@@ -122,7 +132,10 @@ export async function upsertShareAction(orgId: string, noteId: string, formData:
     redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "message", "Share updated."));
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", toNotesErr(error).message));
+    const mapped = toNotesErr(error);
+    if (mapped.code === "INTERNAL") log.error({ err: error, orgId, noteId }, "notes.share.failed");
+    else if (mapped.code === "FORBIDDEN") log.warn({ orgId, noteId, userId: user.id }, "notes.share.denied");
+    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", mapped.message));
   }
 }
 
@@ -134,6 +147,9 @@ export async function removeShareAction(orgId: string, noteId: string, shareId: 
     redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "message", "Share removed."));
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", toNotesErr(error).message));
+    const mapped = toNotesErr(error);
+    if (mapped.code === "INTERNAL") log.error({ err: error, orgId, noteId }, "notes.share_remove.failed");
+    else if (mapped.code === "FORBIDDEN") log.warn({ orgId, noteId, userId: user.id }, "notes.share_remove.denied");
+    redirect(withFlash(`/orgs/${orgId}/notes/${noteId}`, "error", mapped.message));
   }
 }

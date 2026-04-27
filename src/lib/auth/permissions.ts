@@ -8,6 +8,7 @@ import {
   type SharePermission,
 } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
+import { log } from "@/lib/log";
 
 /**
  * App-level permission helpers. These mirror the SQL helpers in
@@ -141,17 +142,26 @@ export async function isOrgMember(orgId: string, userId: string): Promise<boolea
  */
 export async function assertCanReadNote(noteId: string, userId: string): Promise<void> {
   const p = await getNotePermission(noteId, userId);
-  if (!p.canRead) throw new PermissionError(p.reason ?? "forbidden", "note:read", noteId);
+  if (!p.canRead) {
+    log.warn({ noteId, userId, reason: p.reason }, "note.permission_denied:read");
+    throw new PermissionError(p.reason ?? "forbidden", "note:read", noteId);
+  }
 }
 
 export async function assertCanWriteNote(noteId: string, userId: string): Promise<void> {
   const p = await getNotePermission(noteId, userId);
-  if (!p.canWrite) throw new PermissionError(p.reason ?? "forbidden", "note:write", noteId);
+  if (!p.canWrite) {
+    log.warn({ noteId, userId, reason: p.reason }, "note.permission_denied:write");
+    throw new PermissionError(p.reason ?? "forbidden", "note:write", noteId);
+  }
 }
 
 export async function assertCanShareNote(noteId: string, userId: string): Promise<void> {
   const p = await getNotePermission(noteId, userId);
-  if (!p.canShare) throw new PermissionError(p.reason ?? "forbidden", "note:share", noteId);
+  if (!p.canShare) {
+    log.warn({ noteId, userId, reason: p.reason }, "note.permission_denied:share");
+    throw new PermissionError(p.reason ?? "forbidden", "note:share", noteId);
+  }
 }
 
 export class PermissionError extends Error {
