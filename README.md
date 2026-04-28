@@ -235,7 +235,7 @@ The `/healthz` endpoint returns `{"ok":true}` and is used by Railway's health ch
 
 ## Key design decisions
 
-**Why Supabase RLS instead of app-only checks? (todo)**
+**Why Supabase RLS instead of app-only checks?**
 App-level permission checks can be bypassed by bugs, forgotten middleware, or direct API calls. RLS enforces tenant isolation and visibility at the database layer regardless of which code path reaches it. The two layers are complementary: app checks give good UX errors; RLS is the actual security boundary.
 
 **Why keyset (cursor) pagination instead of offset?**
