@@ -760,3 +760,79 @@ Three failure modes I've seen in this codebase:
 3. **Action type declared but never emitted**: someone (possibly a previous agent) reserved `permission.denied` in the `AuditAction` union, which is *worse* than not declaring it at all — it falsely signals to a reviewer that the persistence path exists.
 
 For future agent work in this repo: logging tasks should produce both a structured log line AND, where the event is reviewable security or audit-relevant, an `audit()` call. The presence of an action type in `AuditAction` should be treated as a contract the implementation must honour.
+
+---
+
+## 2026-04-28 — `claude-hooks` module v1 (orchestrator)
+
+New module `agent/claude-hooks` — Claude Code → Notes-App memory bridge. Files: `.claude/settings.json`, `.claude/hooks/{_lib,bootstrap,checkpoint}.js`, `.claude/state/.gitignore`. Spec from product: one agent session ↔ one note, one checkpoint ↔ one new note version.
+
+### Hook map (after reading the official hooks reference)
+
+| Event | Matcher / `if` | Script | Why |
+|---|---|---|---|
+| `SessionStart` | (any source: `startup`/`resume`/`clear`/`compact`) | `bootstrap.js` | Loads org guidelines + last checkpoint. Subsumes the originally-spec'd `PostCompact` — `SessionStart` already fires after a compact with `source=compact`. |
+| `PostToolUse` | `matcher: "Bash"`, `if: "Bash(git commit *)"` | `checkpoint.js` | The `if` field gates at the matcher layer using permission-rule syntax — script no longer parses `tool_input.command`. |
+| `PreCompact` | — | `checkpoint.js` | Snapshot before context loss. |
+| `SessionEnd` | — | `checkpoint.js` | **Replaced `Stop`.** Per docs, `Stop` fires every turn (after every assistant response) — that would mint a checkpoint per turn. `SessionEnd` fires once when the session terminates, which is what "save on stop" actually means. |
+
+`bootstrap.js` emits structured `hookSpecificOutput.additionalContext` JSON rather than plain stdout — keeps the bootstrap text out of the visible transcript while still injecting it into Claude's context.
+
+### Why session-state lives on disk
+Each hook process is a fresh `node` invocation. `bootstrap` writes `sessionNoteId` to `.claude/state/<claude_session_id>.json`; `checkpoint` reads it. Keyed by Claude's `session_id` from hook input — survives across hooks within one session, isolates across concurrent sessions.
+
+### Server-side contract (not yet built)
+`POST /agent/bootstrap` and `POST /agent/sessions/:id/checkpoint` need to be implemented in the notes app. Mapping to existing primitives:
+
+- **Auth**: `MEMORY_AGENT_TOKEN` is a Bearer token. Should resolve to a service principal scoped to one org. Resist the urge to use the service-role Supabase client — go through the standard auth path so RLS still applies.
+- **Note as session**: `notes` row keyed by `(org_id, agentId, repo, branch)`. Bootstrap = upsert (create if absent, return existing). Title format suggestion: `agent:<repo>@<branch>` with `agentId` in metadata.
+- **Version as checkpoint**: each `/checkpoint` POST appends a `note_versions` row whose body renders the payload (event/done/next/issues/decisions/lastCommit) as markdown.
+- **Resume**: `latestCheckpoint` in the bootstrap response = body of the most recent `note_versions` row for that note.
+- **Guidelines**: org-level text. Cleanest place is a designated note (e.g., a singleton tagged `agent-guidelines` in the org), or an `orgs.agent_guidelines` column. Bootstrap returns its current contents.
+- **Audit**: every bootstrap/checkpoint should `audit()` with action types like `agent.session.bootstrap` and `agent.session.checkpoint`. Add to the `AuditAction` union; emitting without declaring (or vice versa) is the failure mode flagged in the previous note.
+- **RBAC**: bootstrap/checkpoint must enforce that the token's principal has write access to the target org. App-level check at the action site (per CLAUDE.md rule 6) PLUS RLS as the actual boundary.
+
+### Failure modes the hooks intentionally swallow
+- Missing `MEMORY_AGENT_TOKEN` → stderr line, no crash. Don't break the parent Claude Code session because the memory backend is down.
+- API non-2xx → stderr line, no crash. Same reason.
+- `checkpoint` with no prior `bootstrap` for the session → stderr line, skip. (Edge case: hooks added mid-session, or state file deleted.)
+
+### Open questions for v2
+- Should `done`/`next`/`issues`/`decisions` be auto-extracted from transcript via a Stop-hook summarization step? v1 leaves them empty (per spec: "no complex summarization").
+- Should `SubagentStop` also checkpoint? Probably yes for parallel-agent visibility, but only if the subagent did meaningful work — needs a heuristic.
+- `CwdChanged` could re-bootstrap if the user `cd`s into a different repo within one Claude session. Not in v1.
+
+### Server-side implementation (same day, follow-up)
+
+Added the routes the hooks call:
+- `POST /agent/bootstrap` — `src/app/agent/bootstrap/route.ts`
+- `POST /agent/sessions/[id]/checkpoint` — `src/app/agent/sessions/[id]/checkpoint/route.ts`
+
+Routes mounted **outside** `/api/` so the URLs match the hook scripts (`MEMORY_API_URL` + `/agent/...`). `src/lib/supabase/middleware.ts` publicPaths now includes `/agent/` so the auth gate doesn't redirect Bearer-token requests to `/sign-in`. The route handlers do their own Bearer auth.
+
+**Auth model**: single env-configured Bearer token bound to a fixed `(MEMORY_AGENT_ORG_ID, MEMORY_AGENT_USER_ID)` principal — `src/lib/agent/auth.ts`. Token compared with `timingSafeEqual`. The configured user must still be a member of the configured org on every call (so revoking the membership locks the agent out without an env change). All three env vars are optional in `src/lib/env.ts`; if any is missing the routes return 503 (`INTERNAL`) and the hooks log to stderr.
+
+**Schema**: one new table `agent_sessions(org_id, note_id, agent_id, repo, branch, created_at, last_seen_at)` with `UNIQUE(org_id, agent_id, repo, branch)` and `INDEX(note_id)` — `src/lib/db/schema/agent.ts`. Migration `drizzle/0004_agent_sessions.sql` is hand-written (matches the project's convention for migrations that need RLS hardening: 0001/0002/0003 are all hand-written, only 0000 is drizzle-kit-generated). Decided **not** to run `db:generate` because the project keeps RLS-enabled tables under hand-written SQL; running generate produced a colliding `0001_*` filename which I reverted. Note for future contributors: don't `db:generate` unless you also handle the RLS lockdown.
+
+**Mapping decisions**:
+- Session note title: `Agent: <repo> @ <branch>` (human-readable; identity key lives in `agent_sessions`, not the title — title can be edited without breaking resume).
+- Session note `visibility: "org"` so the team can see agent activity in the regular notes UI.
+- Each `/checkpoint` POST opens a transaction: appends `note_versions` row, bumps `notes.current_version`, replaces `notes.content` with the latest checkpoint markdown, touches `agent_sessions.last_seen_at`. Reading the note shows the current state; the version trail is the history.
+- `change_summary` on each version encodes `<event> @ <commit-sha>` so the existing notes-history UI is useful for browsing checkpoints.
+- Org guidelines = a designated note in the org titled exactly `Agent Guidelines`. No schema change. Org admins author it via the regular notes UI. If absent, bootstrap returns empty string.
+
+**Audit**: three new action types in `AuditAction` union — `agent.session.bootstrap`, `agent.session.checkpoint`, `agent.session.auth.fail`. Per the `permission.denied` lesson in the prior NOTES section, each is both declared in the type AND emitted at every call site. Auth failures are audited even though the principal is unknown — that's what `userId` being nullable in `audit_log` is for.
+
+**Validation envelope**: routes use `toResponse(ok(...))` / `toResponse(err(...))` from `lib/validation/result.ts` — same shape every other route returns. The hook scripts only check `res.ok` (HTTP 2xx) and `result.data.{sessionNoteId, guidelines, latestCheckpoint}` — they're agnostic to the envelope wrapper but it's there if a future hook wants to surface validation errors.
+
+**RLS trade-off** — see `BUGS.md` (`[KNOWN] RLS bypassed on /agent/* writes`). The Bearer-token path uses the Drizzle `db` client, which connects as the `postgres` role and bypasses RLS. The token IS the auth boundary on that path. v2 plan: provision a Supabase service-account user, sign in programmatically from the route, and route writes through `@/lib/supabase/server` so RLS stays the actual boundary. v1 ships the deviation deliberately to avoid the auth complexity for the take-home demo.
+
+**Verified**:
+- `npx tsc --noEmit` clean.
+- `npx next lint` clean.
+- `npx next build --no-lint` clean; both routes register as dynamic (`/agent/bootstrap`, `/agent/sessions/[id]/checkpoint`).
+- Hook smoke-tests (token unset, no session) fail cleanly via stderr without crashing the parent.
+
+**Not verified** (no DB available in worktree):
+- Migration `0004_agent_sessions.sql` against a real Postgres.
+- End-to-end bootstrap → checkpoint round-trip with a live Supabase instance.

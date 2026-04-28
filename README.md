@@ -185,7 +185,9 @@ Fill in `.env`:
 npm run db:migrate
 ```
 
-This applies all four migration files in order. The RLS policies and storage bucket policies are included — no manual SQL required.
+This applies every `.sql` file in `drizzle/` in lexicographic order. The RLS policies and storage bucket policies are included — no manual SQL required.
+
+> **Note:** `npm run db:migrate` runs the **custom migrator** in `scripts/db/migrate.ts`, not `drizzle-kit migrate`. Drizzle-kit's own migrator only applies entries listed in `drizzle/meta/_journal.json` (i.e. files it generated itself), and would silently skip the hand-written `0001`–`0004_*.sql` files. Always use `npm run db:migrate`.
 
 ### 4. Create storage bucket
 
@@ -217,8 +219,8 @@ The seed creates auth users, org memberships, notes with version history, shared
 | `npm run start` | Start production server |
 | `npm run typecheck` | TypeScript check without building |
 | `npm run lint` | ESLint |
-| `npm run db:generate` | Generate Drizzle migration from schema changes |
-| `npm run db:migrate` | Apply all pending migrations |
+| `npm run db:generate` | Generate a Drizzle migration from schema changes (writes a new `drizzle/<n>_<name>.sql` and updates `drizzle/meta/_journal.json`). Skip for tables that need RLS hardening — write the SQL by hand instead, matching the convention used by `0001`–`0004`. |
+| `npm run db:migrate` | Custom runner (`scripts/db/migrate.ts`) — applies every `.sql` file under `drizzle/` in order. Use this, not `drizzle-kit migrate`, which would skip the hand-written files. |
 | `npm run db:studio` | Open Drizzle Studio (visual DB browser) |
 | `npm run seed` | Small dev seed |
 | `npm run seed:large` | 10k-note seed |
