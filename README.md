@@ -225,6 +225,59 @@ The seed creates auth users, org memberships, notes with version history, shared
 | `npm run seed` | Small dev seed |
 | `npm run seed:large` | 10k-note seed |
 
+## Agent integrations
+
+The app exposes two Bearer-token-authed surfaces for agentic use, both keyed off the same `MEMORY_AGENT_TOKEN` and bound to a single (`MEMORY_AGENT_ORG_ID`, `MEMORY_AGENT_USER_ID`) service principal.
+
+### Memory bridge — `/agent/*`
+
+`POST /agent/bootstrap` and `POST /agent/sessions/:id/checkpoint`. Used by the Claude Code hooks in [.claude/hooks/](.claude/hooks/) to persist agent session state as notes + versions. See [NOTES.md](NOTES.md) for the design log.
+
+### MCP server — `/mcp`
+
+A Model Context Protocol server (Streamable HTTP, stateless) that lets any MCP-aware client read and write the org's notes through the model's tool-call interface.
+
+**Tools**
+
+| Name | Purpose |
+|---|---|
+| `whoami` | Show the bound principal (org + user) |
+| `search_notes` | Full-text + tag/author/date search |
+| `list_recent_notes` | Cursor-paginated recency feed |
+| `get_note` | Full content + history + shares for one note |
+| `create_note` | Author a new note as the bound principal |
+
+**Resources**
+
+| URI | Purpose |
+|---|---|
+| `notes://recent` | The 50 most-recently-updated visible notes |
+| `notes://note/{noteId}` | Single-note template with `list` support |
+
+**Connecting Claude Code (CLI)**
+
+```bash
+claude mcp add --transport http notes-app https://your-app.example/mcp \
+  --header "Authorization: Bearer $MEMORY_AGENT_TOKEN"
+```
+
+**Connecting Claude Desktop / other MCP clients**
+
+Add to the client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "notes-app": {
+      "transport": { "type": "streamable-http", "url": "https://your-app.example/mcp" },
+      "headers": { "Authorization": "Bearer YOUR_MEMORY_AGENT_TOKEN" }
+    }
+  }
+}
+```
+
+Stateless mode means each request is independent — the deployment can scale horizontally without sticky sessions. Every tool/resource call writes an `mcp.tool.call` (or `mcp.resource.read`) row to `audit_log`, indexed by `(orgId, userId)`, with `durationMs` in metadata.
+
 ## Deployment (Railway)
 
 The app ships as a Docker container. `railway.toml` configures the build and deploy settings.

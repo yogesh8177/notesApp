@@ -322,11 +322,11 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 
 ---
 
-## [KNOWN] RLS bypassed on /agent/* writes (deferred to v2)
+## [KNOWN] RLS bypassed on /agent/* and /mcp writes (deferred to v2)
 
-**Where:** `src/lib/agent/sessions.ts` — `bootstrap()` and `checkpoint()` use the Drizzle `db` client. `src/app/agent/bootstrap/route.ts` and `src/app/agent/sessions/[id]/checkpoint/route.ts` do not use the Supabase server client.
+**Where:** `src/lib/agent/sessions.ts` — `bootstrap()` and `checkpoint()` use the Drizzle `db` client. `src/app/agent/bootstrap/route.ts`, `src/app/agent/sessions/[id]/checkpoint/route.ts`, and `src/app/mcp/route.ts` do not use the Supabase server client. The MCP tool handlers in `src/lib/mcp/tools.ts` call into notes-core helpers (`searchNotes`, `listNotesForUser`, `getNoteDetailForUser`, `createNote`) which all use `db`.
 
-**What:** The Bearer-token agent path (`/agent/bootstrap`, `/agent/sessions/:id/checkpoint`) authenticates with `MEMORY_AGENT_TOKEN` and resolves the principal from `MEMORY_AGENT_ORG_ID`/`MEMORY_AGENT_USER_ID` env vars. There is no Supabase auth session, so the route uses the Drizzle `db` client (connects as `postgres` role, bypasses RLS) for both reads and writes against `notes`, `note_versions`, and `agent_sessions`.
+**What:** Both Bearer-token paths (`/agent/*` for the hooks bridge, `/mcp` for the MCP server) authenticate with `MEMORY_AGENT_TOKEN` and resolve the principal from `MEMORY_AGENT_ORG_ID`/`MEMORY_AGENT_USER_ID` env vars. There is no Supabase auth session, so reads/writes against `notes`, `note_versions`, and `agent_sessions` go through the Drizzle `db` client (connects as `postgres` role, bypasses RLS).
 
 **Why bad:** Per `CLAUDE.md` rule 5, RLS is the security boundary; app-level checks are for UX. On this path the boundary is the token + the explicit org-membership assertion in `requireAgentPrincipal`. If the token were to leak — or if a future contributor added a code path that read `agent_sessions` without re-asserting the org match — there's no second defence. Today the assertion is in place (`checkpoint()` verifies `note.orgId === principal.orgId` before writing) but there's no defence-in-depth.
 
@@ -335,7 +335,7 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **Fix plan (v2):**
 1. Provision a Supabase service-account user per deployment; store its email/password (or refresh token) alongside `MEMORY_AGENT_TOKEN`.
 2. In `requireAgentPrincipal`, after the token check, sign that user in (e.g. `supabase.auth.signInWithPassword`, cached per request) and return a Supabase-authed client.
-3. Replace `db` with the Supabase server client in `src/lib/agent/sessions.ts` so RLS policies on `notes` / `note_versions` apply.
+3. Replace `db` with the Supabase server client in `src/lib/agent/sessions.ts` AND in the notes-core helpers called by `src/lib/mcp/tools.ts` so RLS policies on `notes` / `note_versions` apply on both surfaces. Both lift together — same fix, two callers.
 4. Add an `agent_sessions` RLS policy: `org_id IN (SELECT org_id FROM memberships WHERE user_id = auth.uid())`. Today the table is `ENABLE ROW LEVEL SECURITY` with no policies (deny-all for non-superuser) — correct only as long as the superuser-equivalent Drizzle client is the sole reader.
 
 **Fix commit:** _(none — known issue)_
