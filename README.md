@@ -1,5 +1,7 @@
 # Notes App
 
+![CollabNotes hero infographic](./assets/infographic-79aa905e-01b1-425a-a5db-6b9921224540.png)
+
 A multi-tenant team notes platform. Users belong to multiple organisations; each organisation has members, notes, files, and role-based permissions enforced end-to-end — from the UI down to Postgres row-level security.
 
 ## Features
