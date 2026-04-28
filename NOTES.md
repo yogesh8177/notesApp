@@ -836,3 +836,68 @@ Routes mounted **outside** `/api/` so the URLs match the hook scripts (`MEMORY_A
 **Not verified** (no DB available in worktree):
 - Migration `0004_agent_sessions.sql` against a real Postgres.
 - End-to-end bootstrap → checkpoint round-trip with a live Supabase instance.
+
+---
+
+## 2026-04-29 — `notes-mcp` module v1 (orchestrator)
+
+New module `agent/notes-mcp` (worktree branched off `agent/claude-hooks` so the agent_sessions schema, env vars, and audit types are inherited). Adds an MCP server at `POST/GET/DELETE /mcp` so any MCP-aware client (Claude Code, Claude Desktop, Cursor, etc.) can read and write the org's notes interactively.
+
+### Why MCP and not "more REST endpoints"
+
+The hooks bridge gives the agent **memory** — it injects context at session start and writes versions on lifecycle events. But the model can't *query* the notes app mid-conversation through hooks; they're fire-and-forget. MCP is the protocol the model uses to call tools the same way it calls Bash or Read. Adding an MCP server turns the notes app from a passive write target into an interactive memory the model can search and update.
+
+### SDK + transport choice
+
+- `@modelcontextprotocol/sdk@1.29.0`. Latest as of this branch.
+- Transport: `WebStandardStreamableHTTPServerTransport` from `@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js`. Takes a Web `Request`, returns a `Response` — drops straight into a Next.js Route Handler with no Node-shim. SDK author calls this out as the right transport for Cloudflare Workers / Hono / Next, exactly our shape.
+- Stateless mode (`sessionIdGenerator: undefined`, `enableJsonResponse: true`). Every request builds a fresh `McpServer` + transport, uses them once, and closes both in `finally`. No shared state means horizontal scale needs no sticky sessions and no Redis.
+
+### Auth model
+
+Reuses `requireAgentPrincipal` from `src/lib/agent/auth.ts` — same `MEMORY_AGENT_TOKEN` that the hooks bridge uses, same single-(org, user) principal binding, same `timingSafeEqual` check, same live org-membership re-verification on every call. No new auth surface to design or operate.
+
+The principal flows into the MCP server through closure: `createMcpServer(principal)` builds the server, and every tool/resource handler closes over `principal`. No per-call argument passing, no chance of accidental cross-org leakage from a forgotten parameter.
+
+### Tools and resources
+
+Files: `src/lib/mcp/{server,tools,resources,audit,format,index}.ts`, route at `src/app/mcp/route.ts`.
+
+Five tools (`whoami`, `search_notes`, `list_recent_notes`, `get_note`, `create_note`) and two resources (`notes://recent`, `notes://note/{noteId}`). Every implementation calls into existing notes-core helpers (`searchNotes`, `listNotesForUser`, `getNoteDetailForUser`, `createNote`) — zero query duplication. The helpers already enforce permission via `requireMemberRole` / `assertCanReadNote` / `assertCanWriteNote`, so the MCP path inherits the same access checks that the web UI gets.
+
+`NotesError` thrown from a helper is converted to an `isError: true` tool result with the code prefix (e.g. `FORBIDDEN: ...`). The model sees a clean string, not a stack trace. Resources surface errors as JSON payloads with an `error` key since resources have no `isError` flag in the protocol.
+
+### Audit
+
+Every tool call emits one `mcp.tool.call` row (success) or `mcp.tool.error` row (failure) with `durationMs` and a small per-tool metadata bag — `noteId` for `get_note`, `hasQuery` for `search_notes`, etc. Resources do the same with `mcp.resource.{read,error}`. The audit wrapper (`src/lib/mcp/audit.ts`) makes this consistent across handlers — adding a new tool can't accidentally skip auditing.
+
+Action types added to the `AuditAction` union: `mcp.tool.call`, `mcp.tool.error`, `mcp.resource.read`, `mcp.resource.error`, `mcp.auth.fail`. Per the lesson logged at commit `29a9f98` (declared types must be emitted at call sites), each is wired up in code, not just typed.
+
+### Middleware
+
+`/mcp` added to `publicPaths` in `src/lib/supabase/middleware.ts` so the auth gate doesn't redirect Bearer-token requests to `/sign-in`. Same pattern as `/agent/`.
+
+### What this enables today
+
+After deploy + token configuration, an operator can `claude mcp add --transport http notes-app https://app/mcp --header "Authorization: Bearer $TOKEN"` and Claude Code will see `whoami / search_notes / list_recent_notes / get_note / create_note` as callable tools alongside its native ones. Asking "what did I write about X last week" triggers a real search; "save this as a new note" triggers a real write — both audited, both bound to the configured org.
+
+### Open questions for v2
+
+- **OAuth 2.1 vs Bearer**: MCP spec recommends OAuth 2.1 with dynamic client registration. v1 ships Bearer because the agent-token model is already deployed for `/agent/*` and adding OAuth doubles the auth surface. Worth revisiting if we want multi-tenant tokens (one token per dev) instead of a single env-bound principal.
+- **Streaming tool results**: long-running tools could benefit from SSE (`enableJsonResponse: false`). v1 keeps JSON because all current tools complete in <1s and the deploy story stays simpler.
+- **Resource subscriptions**: the SDK supports `subscribe` so clients can be notified when a resource changes. Could power "tell me when a new note is created" flows. Out of scope for v1.
+- **Update / delete tools**: `create_note` is the only writer. Adding `update_note` and `delete_note` is straightforward (the helpers exist) — defer until there's a demonstrated need to avoid surface-area bloat in the LLM's tool list.
+- **Same RLS deviation as `/agent/*`**: tools call `db`-backed helpers, no Supabase auth session, same trade-off documented in `BUGS.md` (`[KNOWN] RLS bypassed on /agent/* writes`). Fix plan applies identically — any v2 work to programmatic Supabase auth lifts both paths together.
+
+### Verified
+
+- `npx tsc --noEmit` clean
+- `npx next lint` clean
+- `npx next build --no-lint` clean — `/mcp` registers as dynamic alongside `/agent/*`
+- One typecheck error caught and fixed: `note.shares[].user.id` → `note.shares[].sharedWith.id` (NoteShareRecord uses `sharedBy` / `sharedWith`, not `user`)
+
+### Not verified (no DB available)
+
+- An actual MCP client connecting and listing tools/resources via the live `/mcp` endpoint.
+- Round-trip of `create_note` → `search_notes` returning the new row.
+- Behaviour under load / multiple concurrent client sessions.

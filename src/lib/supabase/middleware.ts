@@ -40,6 +40,7 @@ export async function updateSession(request: NextRequest) {
     "/auth/sign-out",
     "/healthz",
     "/agent/", // Bearer-token-authed agent memory bridge — does its own auth.
+    "/mcp", // Bearer-token-authed MCP server — does its own auth.
   ];
   const isPublic = publicPaths.some((p) => request.nextUrl.pathname.startsWith(p));
 

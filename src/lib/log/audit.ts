@@ -24,6 +24,8 @@ export type AuditAction =
   | "permission.denied"
   | `org.${"create" | "invite" | "invite.accept" | "role.change" | "switch"}`
   | `agent.session.${"bootstrap" | "checkpoint" | "auth.fail"}`
+  | `agent.search${"" | ".auth.fail"}`
+  | `mcp.${"tool.call" | "tool.error" | "resource.read" | "resource.error" | "auth.fail"}`
   | (string & {});
 
 export interface AuditEvent {
