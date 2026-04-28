@@ -23,6 +23,7 @@ export type AuditAction =
   | `ai.summary.${"request" | "complete" | "fail" | "fallback" | "accept"}`
   | "permission.denied"
   | `org.${"create" | "invite" | "invite.accept" | "role.change" | "switch"}`
+  | `agent.session.${"bootstrap" | "checkpoint" | "auth.fail"}`
   | (string & {});
 
 export interface AuditEvent {
