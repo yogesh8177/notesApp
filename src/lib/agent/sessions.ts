@@ -139,9 +139,17 @@ export async function bootstrap(
     userAgent: meta.userAgent,
   });
 
+  // When source === "clear" the user explicitly reset their conversation
+  // context (`/clear` in Claude Code). Resuming the prior checkpoint would
+  // partly defeat that intent — the user wants a fresh prompt window, not
+  // a re-injection of the last session's done/next/issues bag. Org
+  // guidelines are different: they're static rules of engagement, not
+  // per-session state, so they always come back.
+  const skipCheckpoint = input.source === "clear";
+
   const [guidelines, latestCheckpoint] = await Promise.all([
     loadGuidelines(orgId),
-    loadLatestCheckpoint(noteId),
+    skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
   ]);
 
   return { sessionNoteId: noteId, guidelines, latestCheckpoint };
