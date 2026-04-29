@@ -901,3 +901,65 @@ After deploy + token configuration, an operator can `claude mcp add --transport 
 - An actual MCP client connecting and listing tools/resources via the live `/mcp` endpoint.
 - Round-trip of `create_note` → `search_notes` returning the new row.
 - Behaviour under load / multiple concurrent client sessions.
+
+---
+
+## 2026-04-29 — `agent/identity` module v1 (orchestrator)
+
+Two features in one branch — both reshape the agent identity surface so it's manageable per-org rather than env-bound, and so subagent activity is captured with provenance.
+
+### Why "identity" and not two separate branches
+
+The two pieces share a single concept: **who is acting on the agent path, and how do we know**. Token management answers "which token authenticated this request" and "which org member is the principal." Subagent tracking answers "is this the main agent or a sub-agent, and which kind." The audit record now has a clean tuple — `(orgId, userId, tokenId, agentId, agentType)` — that uniquely identifies any agent action.
+
+### Phase 1 — Token management
+
+**Schema:** `agent_tokens(id, org_id, user_id, name, token_prefix, token_hash, created_by, created_at, last_used_at, revoked_at)` with `UNIQUE(token_hash)` and a partial index `(org_id) WHERE revoked_at IS NULL` for "list active tokens" queries. Migration `drizzle/0005_agent_tokens.sql` is hand-written (RLS-table convention, same as 0001-0004).
+
+**Token format:** `nat_<32 hex>`. The 32 hex digits give 128 bits of entropy. Stored as sha256 hex. The first 8 chars of the random suffix are kept in clear as `token_prefix` for UI display ("nat_a1b2c3d4… last used 2h ago") so we don't need to round-trip the secret.
+
+**Auth refactor:** `requireAgentPrincipal` tries the token table first, then env vars. Token-shape detection (`isWellFormedToken`) decides which path to try — a `nat_*` token never falls through to env even if the table miss would otherwise be ambiguous. The token's `last_used_at` is bumped best-effort (`void db.update(...).catch()`) so a transient DB write failure doesn't tank the request. Env path is kept as v0 backward compat.
+
+**`AgentPrincipal` shape changed:** added `tokenId` (uuid or null for env path) and `tokenName` (string, "env" for env path). Threaded through every existing audit-emitting site: `bootstrap()`, `checkpoint()`, `/agent/search`, and `withAudit` in `src/lib/mcp/audit.ts`. Every audit row from this branch onward carries token provenance.
+
+**UI:** `/orgs/[orgId]/settings` gained an "Agent Tokens" section visible to owners/admins only. Server actions `handleCreateAgentToken` / `handleRevokeAgentToken` follow the existing redirect-with-flash pattern. The cleartext-once-shown UX uses a short-lived path-scoped HttpOnly cookie (`agent_token_just_created`, 60s, path-restricted to `/orgs/[orgId]/settings`) that the page reads and clears on render. Cleartext never appears in URLs, history, or referrer headers.
+
+**Audit:** new types `agent.token.create`, `agent.token.revoke`. Per the lesson at commit `29a9f98`, both are emitted at their call sites in `src/lib/agent-tokens/crud.ts`, not just declared.
+
+### Phase 2 — Subagent tracking
+
+**Hook input plumbing:** Per the [hooks reference](https://code.claude.com/docs/en/hooks), `agent_id` and `agent_type` are populated only when a hook fires inside a sub-agent. New helper `subagentContext()` in `_lib.js` extracts them, returning `null` for the main agent. Documented as such so future hook scripts know what `null` means.
+
+**`/agent/sessions/:id/event` endpoint:** Lightweight audit-only writer. POSTs append an `audit_log` row with the principal + agent metadata but NO `note_versions` row. This is the key design call — high-frequency events (every MCP tool call by a subagent) would explode the version history if checkpointed. Audit log is the right home; versions stay reserved for coarse session-state snapshots.
+
+**Audit kinds:** `agent.event.subagent.start`, `agent.event.subagent.stop`, `agent.event.subagent.tool.call`. Mapped 1:1 from the input `kind` to keep the schema flat.
+
+**Hook events wired:**
+- `SubagentStart` → `event.js` → `subagent.start` (records agent_id/agent_type at spawn time)
+- `SubagentStop` → `event.js` → `subagent.stop`
+- `PostToolUse` matcher `mcp__notes-app__.*` → `event.js` → `subagent.tool.call` (also fires for the main agent's MCP tool calls — same audit kind, just with `agentId: null`. The audit reader can filter for `metadata.agentId IS NOT NULL` if they only want subagent activity.)
+
+### MCP <-> hook audit duality
+
+The MCP server side of `mcp.tool.call` audit rows knows: `(orgId, userId, tokenId, tokenName, toolName, durationMs)`. It does NOT know `agentId` / `agentType` because the MCP wire protocol carries no subagent context — Claude Code sends standard JSON-RPC.
+
+The hook side (`PostToolUse` mcp matcher → `event.js`) knows: `(agentId, agentType, toolName, durationMs)`. So one MCP tool call by a subagent produces TWO audit rows:
+
+1. `mcp.tool.call` with full token provenance, no agent provenance
+2. `agent.event.subagent.tool.call` with agent provenance
+
+Correlated by `(orgId, toolName, ~timestamp)`. Documented this duality so future readers don't think it's an oversight.
+
+### Verified
+
+- `npx tsc --noEmit` clean across all new/modified files
+- `npx next lint` clean
+- `npx next build --no-lint` registers `/agent/bootstrap`, `/agent/search`, `/agent/sessions/[id]/checkpoint`, `/agent/sessions/[id]/event`, `/mcp`. The settings page bundle grew from 739 B to 1.19 kB — the new `created-token-banner.tsx` client component
+- `event.js` smoke-tests: SubagentStart attempts API call, SessionEnd is silently ignored (correct — not in the classify allowlist)
+
+### Open v2 work (deferred)
+
+- **Token list pagination:** `listAgentTokens` returns the full list with no limit. Fine at v1 token volumes (a handful per org). Add cursor pagination if any org grows past ~50 tokens.
+- **Token-level scopes:** every token currently authorises every `/agent/*` and `/mcp` call. Future enhancement: per-token capability flags (`bootstrap-only`, `read-only`, `mcp-write-only`).
+- **Subagent-aware MCP audit:** if Claude Code ever exposes subagent context through MCP (e.g. via `_meta` or a custom header), the `mcp.tool.call` row should pick it up directly and the duplicated event row becomes redundant.
+- **RLS on `agent_tokens`:** same `[KNOWN] RLS bypassed` deviation as `agent_sessions`. The v2 fix-plan in BUGS.md applies — programmatic Supabase auth lifts all three Bearer-token tables together.
