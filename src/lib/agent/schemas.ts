@@ -25,3 +25,17 @@ export const checkpointSchema = z.object({
   decisions: z.array(z.string().trim().min(1).max(500)).max(50).default([]),
 });
 export type CheckpointInput = z.infer<typeof checkpointSchema>;
+
+/**
+ * Per-event audit emission for subagent activity. Lightweight: produces an
+ * audit_log row but no note_versions row, so high-frequency events (every
+ * MCP tool call by a subagent) don't bloat session note history.
+ */
+export const agentEventSchema = z.object({
+  kind: z.enum(["subagent.start", "subagent.stop", "subagent.tool.call"]),
+  agentId: z.string().trim().max(200).nullable().optional(),
+  agentType: z.string().trim().max(80).nullable().optional(),
+  toolName: z.string().trim().max(200).optional(),
+  detail: z.record(z.unknown()).optional(),
+});
+export type AgentEventInput = z.infer<typeof agentEventSchema>;

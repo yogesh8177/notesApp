@@ -1,26 +1,37 @@
 import { timingSafeEqual } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { memberships } from "@/lib/db/schema";
+import { agentTokens, memberships } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { hashToken, isWellFormedToken } from "@/lib/agent-tokens";
 import { err, type Err } from "@/lib/validation/result";
 
 /**
  * Bearer-token authentication for the agent memory bridge.
  *
- * v1 model: a single env-configured token that maps to one (org, user) service
- * principal. The principal must be a member of the org with at least `member`
- * role; we check that on every call so removing the membership immediately
- * locks the agent out without an env change.
+ * Two valid token sources, tried in order:
  *
- * The Bearer-token path uses the Drizzle `db` client (RLS-bypassing). The
- * token IS the authentication boundary — see NOTES.md (2026-04-28) and
- * BUGS.md for the v2 plan to route through programmatic Supabase auth and
- * keep RLS in the loop.
+ *   1. **Token table (`agent_tokens`)** — preferred. Tokens generated through
+ *      the org settings UI are stored as sha256 hashes here. Each token maps
+ *      to (org_id, user_id). Cleartext tokens have the form `nat_<32 hex>`.
+ *      Last-used timestamp is bumped on every successful auth.
+ *
+ *   2. **Env vars (`MEMORY_AGENT_TOKEN` + `_ORG_ID` + `_USER_ID`)** — fallback
+ *      single-tenant model from v0. Constant-time compare. Kept so existing
+ *      deployments don't break when this branch lands; new operators should
+ *      mint tokens via the UI instead.
+ *
+ * Both paths verify that the principal user is still a current org member on
+ * every call, so removing membership locks the agent out immediately without
+ * requiring token revocation.
  */
 export interface AgentPrincipal {
   orgId: string;
   userId: string;
+  /** Token row that authenticated this request. Null when env-fallback was used. */
+  tokenId: string | null;
+  /** Human label of the token (or "env" for the fallback path). */
+  tokenName: string;
 }
 
 export type AgentAuthResult =
@@ -40,30 +51,78 @@ function constantTimeEquals(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-export async function requireAgentPrincipal(
-  request: Request,
-): Promise<AgentAuthResult> {
-  const expected = env.MEMORY_AGENT_TOKEN;
-  const orgId = env.MEMORY_AGENT_ORG_ID;
-  const userId = env.MEMORY_AGENT_USER_ID;
+async function principalFromTokenTable(
+  presented: string,
+): Promise<AgentAuthResult | null> {
+  if (!isWellFormedToken(presented)) return null; // Wrong shape — let env path try.
 
-  if (!expected || !orgId || !userId) {
+  const hash = hashToken(presented);
+  const [row] = await db
+    .select({
+      id: agentTokens.id,
+      name: agentTokens.name,
+      orgId: agentTokens.orgId,
+      userId: agentTokens.userId,
+      revokedAt: agentTokens.revokedAt,
+    })
+    .from(agentTokens)
+    .where(and(eq(agentTokens.tokenHash, hash), isNull(agentTokens.revokedAt)))
+    .limit(1);
+
+  if (!row) return { ok: false, error: err("UNAUTHORIZED", "Invalid agent token.") };
+
+  const [membership] = await db
+    .select({ role: memberships.role })
+    .from(memberships)
+    .where(
+      and(
+        eq(memberships.orgId, row.orgId),
+        eq(memberships.userId, row.userId),
+      ),
+    )
+    .limit(1);
+
+  if (!membership) {
     return {
       ok: false,
       error: err(
-        "INTERNAL",
-        "Agent memory bridge not configured on server (MEMORY_AGENT_* env vars missing).",
+        "FORBIDDEN",
+        "Token's principal user is no longer a member of the org.",
       ),
     };
   }
 
-  const presented = bearerFromHeader(request.headers.get("authorization"));
-  if (!presented || !constantTimeEquals(presented, expected)) {
+  // Best-effort touch — never block the request on a failed update.
+  void db
+    .update(agentTokens)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(agentTokens.id, row.id))
+    .catch(() => {});
+
+  return {
+    ok: true,
+    principal: {
+      orgId: row.orgId,
+      userId: row.userId,
+      tokenId: row.id,
+      tokenName: row.name,
+    },
+  };
+}
+
+async function principalFromEnv(
+  presented: string,
+): Promise<AgentAuthResult | null> {
+  const expected = env.MEMORY_AGENT_TOKEN;
+  const orgId = env.MEMORY_AGENT_ORG_ID;
+  const userId = env.MEMORY_AGENT_USER_ID;
+
+  if (!expected || !orgId || !userId) return null;
+
+  if (!constantTimeEquals(presented, expected)) {
     return { ok: false, error: err("UNAUTHORIZED", "Invalid agent token.") };
   }
 
-  // Resist drift: the configured user must still be a member of the configured
-  // org. Cheap query, runs once per agent call.
   const [membership] = await db
     .select({ role: memberships.role })
     .from(memberships)
@@ -80,7 +139,32 @@ export async function requireAgentPrincipal(
     };
   }
 
-  return { ok: true, principal: { orgId, userId } };
+  return {
+    ok: true,
+    principal: { orgId, userId, tokenId: null, tokenName: "env" },
+  };
+}
+
+export async function requireAgentPrincipal(
+  request: Request,
+): Promise<AgentAuthResult> {
+  const presented = bearerFromHeader(request.headers.get("authorization"));
+  if (!presented) {
+    return { ok: false, error: err("UNAUTHORIZED", "Missing Bearer token.") };
+  }
+
+  // Token-table path first. If the token isn't well-formed (`nat_` shape) the
+  // table path returns null and we fall through to env. If the token IS well-
+  // formed but doesn't match a row, the table path returns UNAUTHORIZED — we
+  // do NOT then fall through to env because the caller clearly intended a
+  // table token and shouldn't get a confusing "valid env match" response.
+  const tableResult = await principalFromTokenTable(presented);
+  if (tableResult) return tableResult;
+
+  const envResult = await principalFromEnv(presented);
+  if (envResult) return envResult;
+
+  return { ok: false, error: err("UNAUTHORIZED", "Invalid agent token.") };
 }
 
 export function clientMeta(request: Request): {

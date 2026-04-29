@@ -2,6 +2,7 @@ import { pgTable, uuid, text, timestamp, uniqueIndex, index } from "drizzle-orm/
 import { sql } from "drizzle-orm";
 import { orgs } from "./orgs";
 import { notes } from "./notes";
+import { users } from "./users";
 
 export const agentSessions = pgTable(
   "agent_sessions",
@@ -31,5 +32,35 @@ export const agentSessions = pgTable(
       t.branch,
     ),
     noteIdx: index("agent_sessions_note_idx").on(t.noteId),
+  }),
+);
+
+export const agentTokens = pgTable(
+  "agent_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** First 8 chars of the cleartext token suffix — for UI display only. */
+    tokenPrefix: text("token_prefix").notNull(),
+    /** sha256 hex of the full cleartext token. The cleartext is never stored. */
+    tokenHash: text("token_hash").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    hashUnique: uniqueIndex("agent_tokens_hash_unique").on(t.tokenHash),
+    orgActiveIdx: index("agent_tokens_org_active_idx").on(t.orgId),
   }),
 );

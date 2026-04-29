@@ -37,6 +37,20 @@ function readStdin() {
   }
 }
 
+/**
+ * Extract subagent context from a hook input. Per the Claude Code hooks
+ * reference, `agent_id` and `agent_type` are populated only when a hook
+ * fires inside a sub-agent (Task / Explore / Plan / custom agent). For the
+ * primary session both fields are absent — we report `null` so the server
+ * can distinguish "main agent" from "subagent named X".
+ */
+function subagentContext(input) {
+  return {
+    agentId: input.agent_id || null,
+    agentType: input.agent_type || null,
+  };
+}
+
 function stateDir() {
   const dir = path.join(process.cwd(), ".claude", "state");
   fs.mkdirSync(dir, { recursive: true });
@@ -79,6 +93,7 @@ async function api(method, urlPath, body) {
 module.exports = {
   detectContext,
   readStdin,
+  subagentContext,
   saveSession,
   loadSession,
   api,

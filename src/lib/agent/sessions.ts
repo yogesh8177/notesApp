@@ -128,6 +128,8 @@ export async function bootstrap(
     resourceType: "note",
     resourceId: noteId,
     metadata: {
+      tokenId: principal.tokenId,
+      tokenName: principal.tokenName,
       agentId: input.agentId,
       repo: input.repo,
       branch: input.branch,
@@ -265,6 +267,8 @@ export async function checkpoint(
     resourceType: "note",
     resourceId: sessionNoteId,
     metadata: {
+      tokenId: principal.tokenId,
+      tokenName: principal.tokenName,
       event: input.event,
       agentId: input.agentId,
       repo: input.repo,

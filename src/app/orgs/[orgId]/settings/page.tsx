@@ -1,12 +1,22 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { requireUser } from "@/lib/auth/session";
 import { SubmitButton } from "@/app/orgs/_components/submit-button";
 import { getMembership } from "@/lib/auth/org";
 import { listMembers, listPendingInvites, inviteMember, changeRole, leaveOrg } from "@/lib/orgs";
+import {
+  createAgentToken,
+  listAgentTokens,
+  revokeAgentToken,
+} from "@/lib/agent-tokens";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { orgs } from "@/lib/db/schema";
 import { CopyInviteLink } from "./_components/copy-invite-link";
+import { AgentTokensSection } from "./_components/agent-tokens-section";
+import { CreatedTokenBanner } from "./_components/created-token-banner";
+
+const NEW_TOKEN_COOKIE = "agent_token_just_created";
 
 interface Props {
   params: Promise<{ orgId: string }>;
@@ -24,11 +34,12 @@ export default async function OrgSettingsPage({ params, searchParams }: Props) {
   const query = await searchParams;
   const user = await requireUser(`/orgs/${orgId}/settings`);
 
-  const [membership, members, pendingInvites, [org]] = await Promise.all([
+  const [membership, members, pendingInvites, [org], tokensResult] = await Promise.all([
     getMembership(orgId, user.id),
     listMembers(orgId),
     listPendingInvites(orgId),
     db.select({ id: orgs.id, name: orgs.name, slug: orgs.slug }).from(orgs).where(eq(orgs.id, orgId)).limit(1),
+    listAgentTokens(orgId, user.id).catch(() => null),
   ]);
 
   if (!membership || !org) {
@@ -72,6 +83,75 @@ export default async function OrgSettingsPage({ params, searchParams }: Props) {
     }
     redirect("/orgs");
   }
+
+  async function handleCreateAgentToken(formData: FormData) {
+    "use server";
+    const u = await requireUser(`/orgs/${orgId}/settings`);
+    const result = await createAgentToken(
+      {
+        orgId,
+        userId: String(formData.get("userId") ?? ""),
+        name: String(formData.get("name") ?? ""),
+      },
+      u.id,
+    );
+    if (!result.ok) {
+      redirect(
+        `/orgs/${orgId}/settings?error=${encodeURIComponent(result.message)}`,
+      );
+    }
+    // Stash the cleartext in a short-lived HttpOnly cookie. The page reads
+    // it once at render and clears it. Cookie never leaves the browser →
+    // server roundtrip, so it's not in URLs, history, or referrer headers.
+    (await cookies()).set(NEW_TOKEN_COOKIE, JSON.stringify({
+      cleartext: result.data.cleartext,
+      name: result.data.name,
+    }), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60, // 1 min — long enough for the redirect, short enough to be safe
+      path: `/orgs/${orgId}/settings`,
+    });
+    redirect(
+      `/orgs/${orgId}/settings?message=${encodeURIComponent("Token created. Copy it now.")}`,
+    );
+  }
+
+  async function handleRevokeAgentToken(formData: FormData) {
+    "use server";
+    const u = await requireUser(`/orgs/${orgId}/settings`);
+    const tokenId = String(formData.get("tokenId") ?? "");
+    const result = await revokeAgentToken(orgId, tokenId, u.id);
+    if (!result.ok) {
+      redirect(
+        `/orgs/${orgId}/settings?error=${encodeURIComponent(result.message)}`,
+      );
+    }
+    redirect(
+      `/orgs/${orgId}/settings?message=${encodeURIComponent("Token revoked.")}`,
+    );
+  }
+
+  // Read-and-clear the one-shot cleartext cookie set by handleCreateAgentToken.
+  // The cookie's path scope is this page, so it only ever lives in requests
+  // for this URL.
+  const cookieStore = await cookies();
+  const newTokenCookie = cookieStore.get(NEW_TOKEN_COOKIE);
+  let newToken: { cleartext: string; name: string } | null = null;
+  if (newTokenCookie) {
+    try {
+      newToken = JSON.parse(newTokenCookie.value);
+    } catch {
+      // Corrupt cookie — drop it.
+    }
+    cookieStore.set(NEW_TOKEN_COOKIE, "", {
+      path: `/orgs/${orgId}/settings`,
+      maxAge: 0,
+    });
+  }
+
+  const tokens = tokensResult?.ok ? tokensResult.data : [];
 
   return (
     <main className="mx-auto max-w-3xl py-12 px-4 space-y-10">
@@ -169,6 +249,24 @@ export default async function OrgSettingsPage({ params, searchParams }: Props) {
             </div>
           )}
         </section>
+      )}
+
+      {/* Agent tokens (admins only) */}
+      {isAdmin && (
+        <>
+          {newToken && (
+            <CreatedTokenBanner
+              cleartext={newToken.cleartext}
+              name={newToken.name}
+            />
+          )}
+          <AgentTokensSection
+            tokens={tokens}
+            members={members}
+            createAction={handleCreateAgentToken}
+            revokeAction={handleRevokeAgentToken}
+          />
+        </>
       )}
 
       {/* Leave org */}
