@@ -110,7 +110,11 @@ export default async function OrgSettingsPage({ params, searchParams }: Props) {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60, // 1 min — long enough for the redirect, short enough to be safe
+      // Short — the redirect is the only consumer. We can't clear this cookie
+      // during the page render (Next.js forbids cookie mutation outside Server
+      // Actions / Route Handlers), so the TTL is the cleanup mechanism. Window
+      // during which a refresh re-shows the banner = this many seconds.
+      maxAge: 30,
       path: `/orgs/${orgId}/settings`,
     });
     redirect(
@@ -133,9 +137,12 @@ export default async function OrgSettingsPage({ params, searchParams }: Props) {
     );
   }
 
-  // Read-and-clear the one-shot cleartext cookie set by handleCreateAgentToken.
-  // The cookie's path scope is this page, so it only ever lives in requests
-  // for this URL.
+  // Read the one-shot cleartext cookie set by handleCreateAgentToken.
+  // We can't clear it here — Next.js 15 forbids cookie mutation during a
+  // Server Component render. The short maxAge (set when this cookie is
+  // written) is what cleans up; if the user refreshes within that window
+  // they'll see the same banner again, which is harmless (same value
+  // they already copied) and bounded by the TTL.
   const cookieStore = await cookies();
   const newTokenCookie = cookieStore.get(NEW_TOKEN_COOKIE);
   let newToken: { cleartext: string; name: string } | null = null;
@@ -143,12 +150,8 @@ export default async function OrgSettingsPage({ params, searchParams }: Props) {
     try {
       newToken = JSON.parse(newTokenCookie.value);
     } catch {
-      // Corrupt cookie — drop it.
+      // Corrupt cookie — render without the banner; cookie expires shortly.
     }
-    cookieStore.set(NEW_TOKEN_COOKIE, "", {
-      path: `/orgs/${orgId}/settings`,
-      maxAge: 0,
-    });
   }
 
   const tokens = tokensResult?.ok ? tokensResult.data : [];
