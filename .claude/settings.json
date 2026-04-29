@@ -21,6 +21,26 @@
         "hooks": [
           { "type": "command", "command": "node .claude/hooks/checkpoint.js" }
         ]
+      },
+      {
+        "matcher": "mcp__notes-app__.*",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/event.js" }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/event.js" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/event.js" }
+        ]
       }
     ],
     "PreCompact": [
