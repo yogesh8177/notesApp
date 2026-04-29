@@ -17,6 +17,10 @@ export async function withAudit<T>(opts: {
   run: () => Promise<T>;
 }): Promise<T> {
   const startedAt = Date.now();
+  const principalMeta = {
+    tokenId: opts.principal.tokenId,
+    tokenName: opts.principal.tokenName,
+  };
   try {
     const result = await opts.run();
     await audit({
@@ -26,6 +30,7 @@ export async function withAudit<T>(opts: {
       resourceType: "mcp",
       resourceId: opts.name,
       metadata: {
+        ...principalMeta,
         ...opts.meta,
         durationMs: Date.now() - startedAt,
       },
@@ -39,6 +44,7 @@ export async function withAudit<T>(opts: {
       resourceType: "mcp",
       resourceId: opts.name,
       metadata: {
+        ...principalMeta,
         ...opts.meta,
         durationMs: Date.now() - startedAt,
         error: error instanceof Error ? error.message : String(error),

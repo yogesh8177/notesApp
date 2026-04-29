@@ -71,6 +71,8 @@ export async function POST(request: Request) {
       userId: auth.principal.userId,
       resourceType: "search",
       metadata: {
+        tokenId: auth.principal.tokenId,
+        tokenName: auth.principal.tokenName,
         qLength: parsed.data.q.length,
         resultCount: response.results.length,
         durationMs: Date.now() - startedAt,
