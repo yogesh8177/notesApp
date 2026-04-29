@@ -34,7 +34,14 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Routes that don't require auth.
-  const publicPaths = ["/sign-in", "/auth/callback", "/auth/sign-out", "/healthz"];
+  const publicPaths = [
+    "/sign-in",
+    "/auth/callback",
+    "/auth/sign-out",
+    "/healthz",
+    "/agent/", // Bearer-token-authed agent memory bridge — does its own auth.
+    "/mcp", // Bearer-token-authed MCP server — does its own auth.
+  ];
   const isPublic = publicPaths.some((p) => request.nextUrl.pathname.startsWith(p));
 
   if (!user && !isPublic) {

@@ -23,6 +23,11 @@ export type AuditAction =
   | `ai.summary.${"request" | "complete" | "fail" | "fallback" | "accept"}`
   | "permission.denied"
   | `org.${"create" | "invite" | "invite.accept" | "role.change" | "switch"}`
+  | `agent.session.${"bootstrap" | "checkpoint" | "auth.fail"}`
+  | `agent.search${"" | ".auth.fail"}`
+  | `agent.token.${"create" | "revoke"}`
+  | `agent.event.${"subagent.start" | "subagent.stop" | "subagent.tool.call"}`
+  | `mcp.${"tool.call" | "tool.error" | "resource.read" | "resource.error" | "auth.fail"}`
   | (string & {});
 
 export interface AuditEvent {

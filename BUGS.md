@@ -319,3 +319,23 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **Fix:** Added `audit({ action: "permission.denied", ... })` next to the existing `log.warn` at four denial sites — three note-permission asserts and the org-membership requirement. Each audit row records the check name, the reason, and the resource so a reviewer can filter and investigate.
 
 **Fix commit:** `29a9f98` on `main`
+
+---
+
+## [KNOWN] RLS bypassed on /agent/* and /mcp writes (deferred to v2)
+
+**Where:** `src/lib/agent/sessions.ts` — `bootstrap()` and `checkpoint()` use the Drizzle `db` client. `src/app/agent/bootstrap/route.ts`, `src/app/agent/sessions/[id]/checkpoint/route.ts`, and `src/app/mcp/route.ts` do not use the Supabase server client. The MCP tool handlers in `src/lib/mcp/tools.ts` call into notes-core helpers (`searchNotes`, `listNotesForUser`, `getNoteDetailForUser`, `createNote`) which all use `db`.
+
+**What:** Both Bearer-token paths (`/agent/*` for the hooks bridge + token CRUD, `/mcp` for the MCP server) authenticate via the `agent_tokens` table (preferred) or `MEMORY_AGENT_*` env vars (v0 fallback) and resolve to a principal `(orgId, userId, tokenId)`. There is no Supabase auth session, so reads/writes against `notes`, `note_versions`, `agent_sessions`, and `agent_tokens` go through the Drizzle `db` client (connects as `postgres` role, bypasses RLS).
+
+**Why bad:** Per `CLAUDE.md` rule 5, RLS is the security boundary; app-level checks are for UX. On this path the boundary is the token + the explicit org-membership assertion in `requireAgentPrincipal`. If the token were to leak — or if a future contributor added a code path that read `agent_sessions` without re-asserting the org match — there's no second defence. Today the assertion is in place (`checkpoint()` verifies `note.orgId === principal.orgId` before writing) but there's no defence-in-depth.
+
+**Why deferred:** v1 is a take-home demo. Routing through Supabase requires a programmatic service-account signin (admin API to mint a session, or a long-lived service JWT) which is a meaningful piece of auth surface to design and test in its own right. Shipping v1 with the deviation logged keeps the scope honest.
+
+**Fix plan (v2):**
+1. Provision a Supabase service-account user per deployment; store its email/password (or refresh token) alongside `MEMORY_AGENT_TOKEN`.
+2. In `requireAgentPrincipal`, after the token check, sign that user in (e.g. `supabase.auth.signInWithPassword`, cached per request) and return a Supabase-authed client.
+3. Replace `db` with the Supabase server client in `src/lib/agent/sessions.ts` AND in the notes-core helpers called by `src/lib/mcp/tools.ts` so RLS policies on `notes` / `note_versions` apply on both surfaces. Both lift together — same fix, two callers.
+4. Add `agent_sessions` and `agent_tokens` RLS policies: `org_id IN (SELECT org_id FROM memberships WHERE user_id = auth.uid())` for `agent_sessions`; `agent_tokens` should additionally restrict to org admins/owners since the token list is admin-only in the UI. Today both tables are `ENABLE ROW LEVEL SECURITY` with no policies (deny-all for non-superuser) — correct only as long as the superuser-equivalent Drizzle client is the sole reader.
+
+**Fix commit:** _(none — known issue)_

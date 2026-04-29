@@ -28,6 +28,13 @@ const schema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 
+  // Agent memory bridge (.claude/hooks/* → /agent/*).
+  // All optional: if any are missing, /agent/* returns 503 and the hooks
+  // log to stderr without breaking the parent Claude Code session.
+  MEMORY_AGENT_TOKEN: z.string().min(16).optional(),
+  MEMORY_AGENT_ORG_ID: z.string().uuid().optional(),
+  MEMORY_AGENT_USER_ID: z.string().uuid().optional(),
+
   // Seed
   SEED_NOTE_COUNT: z.coerce.number().int().positive().default(10000),
   SEED_USER_COUNT: z.coerce.number().int().positive().default(20),
