@@ -4,6 +4,7 @@ import {
   createNote,
   getNoteDetailForUser,
   listNotesForUser,
+  updateNote,
   NotesError,
 } from "@/lib/notes";
 import { searchNotes } from "@/lib/search";
@@ -200,6 +201,64 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
                 userId: s.sharedWith.id,
                 permission: s.permission,
               })),
+            });
+          } catch (err) {
+            return handleNotesError(err);
+          }
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
+  // update_note — append a new version to an existing note.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "update_note",
+    {
+      title: "Update a note (new version)",
+      description:
+        "Append a new version to an existing note. " +
+        "All fields are optional — omitted fields keep their current value. " +
+        "Use this to evolve a session note in place rather than creating new notes. " +
+        "Every call increments currentVersion and records a snapshot in version history. " +
+        "Permission is checked: you must be able to write to this note.",
+      inputSchema: {
+        noteId: z.string().uuid().describe("ID of the note to update."),
+        title: z.string().trim().min(1).max(200).optional(),
+        content: z.string().max(100_000).optional(),
+        visibility: z.enum(VISIBILITY).optional(),
+        tags: z
+          .array(z.string().trim().min(1).max(64))
+          .max(20)
+          .optional()
+          .describe("Replaces the full tag list. Omit to keep existing tags."),
+        changeSummary: z
+          .string()
+          .trim()
+          .max(280)
+          .optional()
+          .describe("Short description of what changed (shown in version history)."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+      },
+    },
+    async ({ noteId, ...rest }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "update_note",
+        meta: { noteId, contentLength: rest.content?.length },
+        run: async () => {
+          try {
+            const note = await updateNote(noteId, rest, principal.userId);
+            return textToolResult({
+              id: note.id,
+              title: note.title,
+              currentVersion: note.currentVersion,
+              visibility: note.visibility,
+              updatedAt: note.updatedAt,
             });
           } catch (err) {
             return handleNotesError(err);
