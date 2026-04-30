@@ -359,3 +359,13 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **What:** `checkpoint.js` only parsed the commit subject from tool_response; `renderCheckpoint` had no field for extended description, so commit bodies were silently discarded.
 **Why bad:** Session notes lacked feature context — only one-liner subjects, no description of what changed or why.
 **Fix:** Added `body` field to `checkpointSchema`; `renderCheckpoint` emits `### Summary` when body is present; hook fetches body via `git log -1 --pretty=%b` in the worktree CWD.
+
+---
+
+## [MED] checkpoint.js: tool_response parsing failures caused empty done/wrong CWD (fix: fix/checkpoint-parsing)
+
+**Where:** `.claude/hooks/checkpoint.js:67–68` (output extraction), `:32` (extractCwd), `:39` (parseCommitOutput)
+**Found by:** orchestrator (observed empty `done` + wrong SHA in session note after worktree commits)
+**What:** Three independent parsing failures: tool_response format not normalised, extractCwd only handled double-quoted paths, parseCommitOutput branch-name regex too narrow.
+**Why bad:** Checkpoint entries had empty `### Done`, wrong commit SHA (fell back to main HEAD), and subject line silently dropped.
+**Fix:** `extractOutput()` handles string/output/content shapes; `extractCwd` handles double/single-quoted and bare paths; `parseCommitOutput` uses `\S+` for branch name.

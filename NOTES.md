@@ -1057,3 +1057,27 @@ note too sparse to serve as a meaningful feature log.
 
 Writing a descriptive commit message body is now the natural way to get a
 feature summary into the notes-app session note — no separate MCP call needed.
+
+---
+
+## 2026-04-30 — Tighten checkpoint.js parsing (orchestrator)
+
+### Problem
+
+Three weak spots in the commit checkpoint hook:
+
+1. `tool_response` extraction assumed `{ output: string }` shape. Claude Code may also
+   emit a string directly, or `{ content: [{type:"text", text:string}] }` — both fell
+   through to `""`, so `parseCommitOutput` always got an empty string.
+
+2. `extractCwd` regex only handled double-quoted paths. Single-quoted (`cd 'path' &&`)
+   and bare (`cd /path &&`) paths returned null, falling back to the main repo CWD.
+
+3. `parseCommitOutput` branch-name character class `[\w/.\-]+` excluded valid chars
+   (e.g. parentheses in merge commits like `main (HEAD)`), causing no-match failures.
+
+### Fix
+
+- `extractOutput(toolResponse)`: tries `string` → `.output` → `.content[0].text` in order.
+- `extractCwd(command)`: regex now handles double-quoted, single-quoted, and bare paths.
+- `parseCommitOutput(output)`: branch name now matched with `\S+` (any non-whitespace).
