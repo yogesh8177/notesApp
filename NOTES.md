@@ -993,3 +993,29 @@ Wired `updateNote` from `@/lib/notes` as a new MCP tool. Allows the model to evo
 ### Session log workflow established
 
 Going forward: `create_note` only at session start (when no session note exists). All subsequent changes use `update_note` on the existing session note. Rationale: one note per session with an evolving version trail is more navigable than a new note per change.
+
+---
+
+## 2026-04-30 — Per-note timeline (feat/note-timeline)
+
+### Decision: schema change allowed from orchestrator context
+
+`src/lib/db/schema/**` is frozen for module agents in isolated worktrees. The orchestrator (main branch, coordinating context) can add non-breaking additions — an index does not alter any column, type, or RLS policy, and requires no migration coordination with other modules.
+
+### Index: `audit_log_resource_idx` — migration `0006_audit_resource_idx.sql`
+
+Added `(resource_type, resource_id)` composite index on `audit_log`. Without it, a per-note timeline query lands on `audit_log_org_created_idx` and filters `resource_id` in memory — fine for a demo, but linear in org event volume. The new index makes per-note queries O(note events) regardless of org size.
+
+### Query: `getNoteTimeline`
+
+Reuses `TimelineEvent` from `getOrgTimeline`. Two-condition WHERE:
+- `(resource_type = 'note' AND resource_id = noteId)` — hits the new index directly
+- `action LIKE 'ai.summary.%' AND metadata->>'noteId' = noteId` — catches AI summary events that store noteId in metadata rather than resourceId (same pattern as the org timeline)
+
+### Page: `notes/[noteId]/timeline/page.tsx`
+
+Scoped EventDescription — no note links (already on the note). Day-grouped identical to org timeline. Tab added to the note layout alongside Note / AI Summary / History.
+
+### Cleanup note
+
+The `and`/`or`/`sql` imports added to `queries.ts` are the only new drizzle symbols; no new dependencies.

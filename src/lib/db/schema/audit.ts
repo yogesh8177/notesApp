@@ -41,5 +41,6 @@ export const auditLog = pgTable(
     orgCreatedIdx: index("audit_log_org_created_idx").on(t.orgId, t.createdAt),
     actionIdx: index("audit_log_action_idx").on(t.action),
     userCreatedIdx: index("audit_log_user_created_idx").on(t.userId, t.createdAt),
+    resourceIdx: index("audit_log_resource_idx").on(t.resourceType, t.resourceId),
   }),
 );
