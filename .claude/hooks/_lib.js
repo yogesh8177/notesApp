@@ -55,10 +55,19 @@ function subagentContext(input) {
 }
 
 function stateDir() {
-  // Use __dirname (hooks dir) not process.cwd() — when the Bash command starts
-  // with `cd <worktree>`, the hook inherits that CWD and would look for the
-  // state file in the wrong place.
-  const dir = path.join(__dirname, "..", "state");
+  // Always resolve state from the MAIN repo, not a worktree.
+  // git rev-parse --git-common-dir returns the shared .git dir; one level up
+  // is the main repo root regardless of which worktree we're in.
+  let base;
+  try {
+    const commonGit = execSync("git rev-parse --git-common-dir", {
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString().trim();
+    base = path.join(commonGit, "..", ".claude");
+  } catch {
+    base = path.join(__dirname, "..");
+  }
+  const dir = path.join(base, "state");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

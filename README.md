@@ -346,17 +346,18 @@ Copy the `.claude/hooks/` directory from this repo into the target project. The 
 
 > **State dir** is resolved relative to the hooks directory (`__dirname`), not `process.cwd()`. This ensures the state file is always in the main repo even when a Bash command starts with `cd <worktree>`.
 
-### Step 6 — Credit subagent work after every Agent call
+### Step 6 — Subagents self-report via `log.js done`
 
-`PostToolUse` hook writes race on the session state file when multiple subagents commit concurrently — some items are silently dropped. The reliable path is a manual call immediately after each subagent returns:
+`PostToolUse` hook writes race on the session state file when multiple subagents commit concurrently — some items are silently dropped. The fix is to have each subagent call `log.js` itself immediately after every commit. Include this instruction in every subagent prompt:
 
-```bash
-node .claude/hooks/log.js done "feat(module): what the subagent shipped"
-```
+> After every `git commit`, immediately run:
+> ```bash
+> node .claude/hooks/log.js done "<commit subject>"
+> ```
 
-Call this once per commit the subagent reports, for every Agent call. Dedup is handled automatically — calling it for an item that was already auto-accumulated is a no-op.
+This works from any worktree. `log.js` always resolves state from the main repo via `git rev-parse --git-common-dir`, so it writes into the correct session regardless of which worktree it runs in. Dedup is automatic — duplicate calls are safe.
 
-The same utility logs decisions and issues that should surface in the final checkpoint:
+The orchestrator uses the same utility to log decisions and issues:
 
 ```bash
 node .claude/hooks/log.js decision "Chose X over Y because Z"
@@ -368,9 +369,9 @@ node .claude/hooks/log.js issue "Race condition in file upload handler"
 | Scenario | Auto via hook | Needs `log.js done` |
 |---|---|---|
 | Single agent, sequential commits | ✅ | No |
-| Parallel non-worktree subagents | Partial (race drops items) | Yes |
-| Parallel worktree subagents | Partial (race drops items) | Yes |
-| Decisions / issues | Never | Always |
+| Parallel non-worktree subagents | Partial (race drops items) | Subagent self-reports |
+| Parallel worktree subagents | Partial (race drops items) | Subagent self-reports |
+| Decisions / issues | Never | Orchestrator logs manually |
 
 ## Agent integrations
 

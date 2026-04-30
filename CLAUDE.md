@@ -106,19 +106,20 @@ event that should persist (auth, mutations, AI calls, denials, failures).
 Every server action / route handler input goes through a zod schema. Use
 `fromZod(error)` and `toResponse(result)` from `lib/validation/result.ts`.
 
-### 10. Credit subagent work after every Agent call
+### 10. Subagents must self-report completed work
 
-After every `Agent` tool call returns, immediately run:
+Every subagent prompt **must** end with this instruction:
 
-```bash
-node .claude/hooks/log.js done "<commit subject>"
-```
+> After every `git commit`, immediately run:
+> ```bash
+> node .claude/hooks/log.js done "<commit subject>"
+> ```
+> Use the exact subject from the commit. This works from any worktree.
 
-once per commit the subagent reports making. Do this before moving on to the
-next task. Dedup is handled automatically — calling it for an item already
-present is safe. This is required because concurrent hook writes race on the
-session file and drop items; `log.js done` is the correctness guarantee, not
-the hook.
+Dedup is automatic — calling it for an already-present item is a no-op.
+This is required because concurrent `PostToolUse` hook writes race on the
+session file and silently drop items; `log.js done` is the correctness
+guarantee.
 
 ### 11. Distrust your own output
 
