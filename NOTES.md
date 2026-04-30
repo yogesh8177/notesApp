@@ -1081,3 +1081,18 @@ Three weak spots in the commit checkpoint hook:
 - `extractOutput(toolResponse)`: tries `string` → `.output` → `.content[0].text` in order.
 - `extractCwd(command)`: regex now handles double-quoted, single-quoted, and bare paths.
 - `parseCommitOutput(output)`: branch name now matched with `\S+` (any non-whitespace).
+
+---
+
+## 2026-04-30 — Checkpoint hook simulation test (orchestrator)
+
+Testing that the checkpoint hook now correctly:
+- Captures subject in ### Done
+- Captures body in ### Summary
+- Does not write duplicate entries for non-commit Bash calls
+debug trigger
+debug2
+trace test
+x
+y
+z
