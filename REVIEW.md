@@ -241,3 +241,23 @@ Two issues were initially conflated but are independent:
 - The original `waitForProfiles` design was fragile: it assumed trigger presence and a specific timing relationship between the auth service's commit and the seed's DB connection. Neither is guaranteed in a hosted Supabase environment.
 
 **Lesson:** Seed scripts that bootstrap auth users should always write the mirror profile rows themselves. Triggers are for the application path; seeds own their own setup.
+
+---
+
+## Post-implementation review (2026-04-30)
+
+### Timeline page (orchestrator, deep)
+
+**Reviewed:**
+- `getOrgTimeline` query — joins `audit_log → users`, batch-loads note titles in a second query keyed on collected note IDs. No N+1. `eq(auditLog.orgId, orgId)` enforces org isolation at the DB layer. ✅
+- Soft-deleted notes — `noteTitleMap.get(noteId)?.deletedAt !== null` surfaces as struck-through title rather than a dead link, with tooltip "Note deleted". ✅
+- Day-group logic — `isSameDay` compares full year/month/day; no timezone edge cases because all dates are `Date` objects from the DB (UTC). ✅
+- Metadata rendering — field access is defensive throughout (`typeof event.metadata.q === "string"`); no unchecked cast from `Record<string, unknown>`. ✅
+- Error text truncation — `mcp.tool.error` and `mcp.resource.error` render error strings with `truncate max-w-xs` and `title={error}` tooltip so long stack traces don't break layout. ✅
+- Icon imports — removed unused `FileText` import (was in original but no case used it); added `Search`, `Wrench`, `Database`, `Bot`, `AlertCircle`. ✅
+- `tsc --noEmit` — clean. ✅
+
+**Not reviewed / future TODOs:**
+- No pagination on the timeline query — `getOrgTimeline` fetches the latest 100 rows. At high audit volume (busy MCP sessions) this will miss older events. Add cursor pagination when the 100-row cap becomes a UX issue.
+- `loading.tsx` not inspected in this pass — carries over from the original implementation.
+- No test for the day-grouping logic across DST boundaries (unlikely to matter for an audit log but worth noting).

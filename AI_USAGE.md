@@ -359,3 +359,20 @@ Worse, in this codebase the `AuditAction` type already had `permission.denied` d
 **What was right:** Asking and answering the question "is the audit_log entry being written?" before adding the audit() call. Confirming the action type was declared but not emitted is what made this a documentation defect on top of a code defect.
 
 **What was wrong (in the previous session that added log.warn but not audit):** Treated the "log permission denials" task literally — added a log line — without checking whether the event should also persist. This is the class of agent failure the user is now flagging in their guidance.
+
+## 2026-04-30 — Timeline page + MCP update_note (orchestrator, no sub-agent)
+
+**Trigger:** User asked to add rich metadata rendering to the timeline — existing implementation showed only static labels for `search.execute`, `mcp.tool.*`, `mcp.resource.*`, and `agent.event.*` audit actions despite those rows carrying full metadata in the DB.
+
+**What I did:**
+1. Read `src/lib/timeline/queries.ts` and `page.tsx` to understand existing shape.
+2. Grepped all `audit({...})` call sites across `search/service.ts`, `mcp/audit.ts`, `agent/events.ts` to map exact metadata fields per action type.
+3. Added `getActionMeta` entries for 8 new action types with appropriate icons and colours.
+4. Added `EventDescription` cases rendering real metadata: query + result count + latency for search; tool/resource name + token + duration/error for MCP; agent type + token + agentId for subagent events.
+5. Wired `updateNote` into `src/lib/mcp/tools.ts` so the model can evolve a session note in place.
+
+**No sub-agent used** — sequential file reads + targeted grep answered all metadata questions; delegating would have re-derived the same from scratch.
+
+**What was right:** Grepping audit call sites directly rather than guessing field names — actual field names confirmed before writing any render code.
+
+**What was wrong (pre-fix):** The original `EventDescription` rendered a meaningful label for note/file/AI/org/auth events but left the agent and MCP action types as raw strings. All the data to render them richly was already in the DB; the render layer just hadn't been extended when those action types were added.

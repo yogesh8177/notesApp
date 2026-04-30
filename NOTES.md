@@ -963,3 +963,33 @@ Correlated by `(orgId, toolName, ~timestamp)`. Documented this duality so future
 - **Token-level scopes:** every token currently authorises every `/agent/*` and `/mcp` call. Future enhancement: per-token capability flags (`bootstrap-only`, `read-only`, `mcp-write-only`).
 - **Subagent-aware MCP audit:** if Claude Code ever exposes subagent context through MCP (e.g. via `_meta` or a custom header), the `mcp.tool.call` row should pick it up directly and the duplicated event row becomes redundant.
 - **RLS on `agent_tokens`:** same `[KNOWN] RLS bypassed` deviation as `agent_sessions`. The v2 fix-plan in BUGS.md applies — programmatic Supabase auth lifts all three Bearer-token tables together.
+
+---
+
+## 2026-04-30 — Timeline page + MCP update_note (orchestrator)
+
+### Timeline feature — commit `102cd1c`
+
+Added `/orgs/[orgId]/timeline` — an org-scoped activity feed backed by `audit_log`. Files: `src/app/orgs/[orgId]/timeline/page.tsx`, `src/app/orgs/[orgId]/timeline/loading.tsx`, `src/lib/timeline/queries.ts`.
+
+**Query design:** `getOrgTimeline` joins `audit_log → users` and batch-loads note titles from `notes` for any row where `resourceType='note'` or `action.startsWith('ai.summary.')` with a `noteId` in metadata. Soft-deleted notes surface as struck-through titles rather than broken links. One query + one batch load = two round-trips regardless of page size.
+
+**Metadata rendering:** Previous implementation fell through to the raw action string for `search.execute`, `mcp.tool.*`, `mcp.resource.*`, and `agent.event.*`. Each now renders real fields:
+
+| Action | Fields shown |
+|---|---|
+| `search.execute` | query text, result count, latency ms, page |
+| `mcp.tool.call/error` | tool name (from `resourceId`), token name, duration ms or error |
+| `mcp.resource.read/error` | resource name, token name, duration ms or error |
+| `agent.event.subagent.start/stop` | agent type, token name, agentId (first 8 chars) |
+| `agent.event.subagent.tool.call` | tool name, agent type, token name |
+
+**Why this matters:** The audit log rows are already rich — `search.execute` has `q`, `resultCount`, `latencyMs`; MCP rows have `tokenName`, `durationMs`; agent event rows have `agentType`, `toolName`. Showing only a label discarded that data at render time for no reason.
+
+### MCP `update_note` tool — unstaged in `src/lib/mcp/tools.ts`
+
+Wired `updateNote` from `@/lib/notes` as a new MCP tool. Allows the model to evolve a session note in place rather than creating a new note per change. Every call increments `currentVersion` and records a snapshot in version history. `withAudit` wraps it so every update produces a `mcp.tool.call` audit row with `noteId` + `contentLength` in metadata.
+
+### Session log workflow established
+
+Going forward: `create_note` only at session start (when no session note exists). All subsequent changes use `update_note` on the existing session note. Rationale: one note per session with an evolving version trail is more navigable than a new note per change.
