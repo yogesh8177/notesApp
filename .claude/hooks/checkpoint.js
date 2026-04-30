@@ -82,7 +82,6 @@ function parseCommitOutput(output) {
     const command = input.tool_input?.command ?? "";
     const worktreeCwd = extractCwd(command) || undefined;
     ctx = detectContext(worktreeCwd);
-    done.push(parsed.subject);
     ctx = { ...ctx, lastCommit: parsed.sha };
 
     body = gitInDir("log -1 --pretty=%b", worktreeCwd);
@@ -91,6 +90,8 @@ function parseCommitOutput(output) {
     const accumulated = session.accumulatedDone ?? [];
     accumulated.push(parsed.subject);
     saveSession(sessionId, { ...session, accumulatedDone: accumulated });
+    // Use the full accumulated list so mid-session checkpoints also show all done items.
+    done = accumulated;
   } else {
     ctx = detectContext();
     // Drain accumulated done items from session state.
