@@ -6,9 +6,12 @@ const os = require("os");
 const API_URL = process.env.MEMORY_API_URL || "http://localhost:3000";
 const TOKEN = process.env.MEMORY_AGENT_TOKEN;
 
-function git(cmd) {
+function git(cmd, cwd) {
   try {
-    return execSync(`git ${cmd}`, { stdio: ["ignore", "pipe", "ignore"] })
+    return execSync(`git ${cmd}`, {
+      stdio: ["ignore", "pipe", "ignore"],
+      ...(cwd ? { cwd } : {}),
+    })
       .toString()
       .trim();
   } catch {
@@ -16,13 +19,13 @@ function git(cmd) {
   }
 }
 
-function detectContext() {
-  const remote = git("config --get remote.origin.url");
+function detectContext(cwd) {
+  const remote = git("config --get remote.origin.url", cwd);
   const repo =
     (remote && remote.replace(/\.git$/, "").split(/[:/]/).slice(-2).join("/")) ||
-    path.basename(process.cwd());
-  const branch = git("rev-parse --abbrev-ref HEAD") || "detached";
-  const lastCommit = git("rev-parse HEAD") || "";
+    path.basename(cwd || process.cwd());
+  const branch = git("rev-parse --abbrev-ref HEAD", cwd) || "detached";
+  const lastCommit = git("rev-parse HEAD", cwd) || "";
   const agentId =
     process.env.AGENT_ID || `claude-code-${os.hostname()}-${os.userInfo().username}`;
   return { repo, branch, lastCommit, agentId };

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-const { execSync } = require("child_process");
 const { detectContext, readStdin, loadSession, api } = require("./_lib");
 
 function classify(input) {
@@ -16,6 +15,20 @@ function classify(input) {
   }
 }
 
+// Extract working directory from "cd /some/path && git commit ..."
+function extractCwd(command) {
+  const m = command?.match(/^cd\s+"?([^"&\n]+?)"?\s*&&/);
+  return m ? m[1].trim() : null;
+}
+
+// Parse git commit stdout: "[branch sha] subject" → { sha, subject }
+function parseCommitOutput(output) {
+  if (typeof output !== "string") return null;
+  const m = output.match(/^\[[\w/.\-]+\s+([0-9a-f]+)\]\s+(.+)/m);
+  if (!m) return null;
+  return { sha: m[1], subject: m[2].trim() };
+}
+
 (async () => {
   const input = readStdin();
   const event = classify(input);
@@ -28,17 +41,24 @@ function classify(input) {
     return;
   }
 
-  const ctx = detectContext();
   const done = [];
+  let ctx;
+
   if (event === "commit") {
-    try {
-      const subject = execSync("git log -1 --pretty=%s", {
-        stdio: ["ignore", "pipe", "ignore"],
-      })
-        .toString()
-        .trim();
-      if (subject) done.push(subject);
-    } catch {}
+    // Detect context from the worktree where the commit actually happened.
+    const command = input.tool_input?.command ?? "";
+    const worktreeCwd = extractCwd(command) || undefined;
+    ctx = detectContext(worktreeCwd);
+
+    // Pull subject + SHA from the Bash tool output — no extra git subprocess needed.
+    const output = input.tool_response?.output ?? input.tool_response ?? "";
+    const parsed = parseCommitOutput(typeof output === "string" ? output : "");
+    if (parsed) {
+      done.push(parsed.subject);
+      ctx = { ...ctx, lastCommit: parsed.sha };
+    }
+  } else {
+    ctx = detectContext();
   }
 
   try {
