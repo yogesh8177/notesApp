@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { detectContext, readStdin, saveSession, api } = require("./_lib");
+const { detectContext, readStdin, saveSession, saveCurrentSession, api } = require("./_lib");
 
 (async () => {
   const input = readStdin();
@@ -17,6 +17,7 @@ const { detectContext, readStdin, saveSession, api } = require("./_lib");
 
     const payload = res.data;
     saveSession(sessionId, { sessionNoteId: payload.sessionNoteId, ...ctx });
+    saveCurrentSession(sessionId);
 
     const text = [
       "ORG GUIDELINES:",

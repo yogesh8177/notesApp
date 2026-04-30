@@ -86,7 +86,7 @@ function parseCommitOutput(output) {
 
     body = gitInDir("log -1 --pretty=%b", worktreeCwd);
 
-    // Accumulate done items in session state so stop/compact can carry them forward.
+    // Accumulate done/decisions/issues in session state so stop/compact can carry them forward.
     const accumulated = session.accumulatedDone ?? [];
     accumulated.push(parsed.subject);
     saveSession(sessionId, { ...session, accumulatedDone: accumulated });
@@ -94,9 +94,12 @@ function parseCommitOutput(output) {
     done = accumulated;
   } else {
     ctx = detectContext();
-    // Drain accumulated done items from session state.
+    // Drain accumulated items from session state.
     done = session.accumulatedDone ?? [];
   }
+
+  const decisions = session.accumulatedDecisions ?? [];
+  const issues = session.accumulatedIssues ?? [];
 
   try {
     await api("POST", `/agent/sessions/${session.sessionNoteId}/checkpoint`, {
@@ -108,8 +111,8 @@ function parseCommitOutput(output) {
       body,
       done,
       next: [],
-      issues: [],
-      decisions: [],
+      issues,
+      decisions,
     });
   } catch (err) {
     process.stderr.write(`[checkpoint] ${err.message}\n`);
