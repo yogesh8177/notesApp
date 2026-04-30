@@ -359,3 +359,33 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **What:** `checkpoint.js` only parsed the commit subject from tool_response; `renderCheckpoint` had no field for extended description, so commit bodies were silently discarded.
 **Why bad:** Session notes lacked feature context — only one-liner subjects, no description of what changed or why.
 **Fix:** Added `body` field to `checkpointSchema`; `renderCheckpoint` emits `### Summary` when body is present; hook fetches body via `git log -1 --pretty=%b` in the worktree CWD.
+
+---
+
+## [MED] checkpoint.js: tool_response parsing failures caused empty done/wrong CWD (fix: fix/checkpoint-parsing)
+
+**Where:** `.claude/hooks/checkpoint.js:67–68` (output extraction), `:32` (extractCwd), `:39` (parseCommitOutput)
+**Found by:** orchestrator (observed empty `done` + wrong SHA in session note after worktree commits)
+**What:** Three independent parsing failures: tool_response format not normalised, extractCwd only handled double-quoted paths, parseCommitOutput branch-name regex too narrow.
+**Why bad:** Checkpoint entries had empty `### Done`, wrong commit SHA (fell back to main HEAD), and subject line silently dropped.
+**Fix:** `extractOutput()` handles string/output/content shapes; `extractCwd` handles double/single-quoted and bare paths; `parseCommitOutput` uses `\S+` for branch name.
+
+---
+
+## [HIGH] Concurrent checkpoint writes cause duplicate key on note_versions (fix: fix/checkpoint-parsing)
+
+**Where:** `src/lib/agent/sessions.ts:230` (read-then-write version increment)
+**Found by:** orchestrator (PostgresError 23505 duplicate key on note_id+version)
+**What:** `checkpoint()` read `currentVersion`, computed `+1`, then inserted into `note_versions`. Two concurrent hook firings both read the same version and raced to insert the same `(noteId, version)` pair.
+**Why bad:** Checkpoint writes fail with an unhandled 500; session note stops updating until next successful write.
+**Fix:** Reversed the order — UPDATE notes with `current_version + 1 RETURNING current_version` first (PostgreSQL row lock serialises concurrent calls), then INSERT note_versions with the atomically claimed version number.
+
+---
+
+## [MED] checkpoint hook fires on every Bash call, not just git commits (fix: fix/checkpoint-parsing)
+
+**Where:** `.claude/hooks/checkpoint.js:74` (PostToolUse path)
+**Found by:** orchestrator (4 duplicate checkpoint entries per commit, empty done arrays)
+**What:** `if: "Bash(git commit *)"` in settings.json does not filter hook execution — hook fires for every Bash tool call. `classify()` returned "commit" for all PostToolUse events unconditionally.
+**Why bad:** Every Bash call (file reads, tsc, git push, etc.) wrote a spurious checkpoint with empty done/wrong SHA, bloating session note history.
+**Fix:** In the `"commit"` branch, parse tool_response first — if no git commit line is found, return early before writing any checkpoint.
