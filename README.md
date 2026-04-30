@@ -348,21 +348,28 @@ Copy the `.claude/hooks/` directory from this repo into the target project. The 
 
 ### Step 6 — Subagents self-report via `log.js done`
 
-`PostToolUse` hook writes race on the session state file when multiple subagents commit concurrently — some items are silently dropped. The fix is to have each subagent call `log.js` itself immediately after every commit. Include this instruction in every subagent prompt:
+`PostToolUse` hook writes race on the session state file when multiple subagents commit concurrently — some items are silently dropped. The fix is to have each subagent call `log.js` itself immediately after every commit.
 
-> After every `git commit`, immediately run:
-> ```bash
-> node .claude/hooks/log.js done "<commit subject>"
-> ```
+`log.js` resolves state from the main repo via `git rev-parse --git-common-dir`, so it writes into the correct session regardless of which worktree it runs in. Dedup is automatic — duplicate calls are safe.
 
-This works from any worktree. `log.js` always resolves state from the main repo via `git rev-parse --git-common-dir`, so it writes into the correct session regardless of which worktree it runs in. Dedup is automatic — duplicate calls are safe.
+#### Boilerplate to append to every subagent prompt
 
-The orchestrator uses the same utility to log decisions and issues:
+```
+## Reporting
+After every `git commit`, immediately run:
+  node .claude/hooks/log.js done "<exact commit subject>"
+Use the exact subject string from the git output — no paraphrasing.
+Do this before moving on to the next task.
+```
+
+#### Orchestrator: log decisions and issues
 
 ```bash
 node .claude/hooks/log.js decision "Chose X over Y because Z"
 node .claude/hooks/log.js issue "Race condition in file upload handler"
 ```
+
+These surface in the final checkpoint at `SessionEnd` / `PreCompact`.
 
 ### Reliability summary
 
