@@ -1036,3 +1036,24 @@ Two bugs in the per-note timeline (`notes/[id]/timeline`):
 
 - `src/lib/timeline/queries.ts`: replaced the two-clause OR with a generalised `metadata->>'noteId' = noteId` second branch (covers ai.summary.*, mcp.tool.*, and any future event that embeds noteId in metadata). Also simplified `resolvedNoteId` mapping.
 - `src/app/orgs/[orgId]/notes/[noteId]/timeline/page.tsx`: added icon + colour entries for all mcp/agent/search actions; added full `EventDescription` branches matching the org-wide timeline.
+
+---
+
+## 2026-04-30 — Checkpoint: include commit body in session note (orchestrator)
+
+### Motivation
+
+Checkpoint entries only captured the commit subject line. The commit body
+(description, Co-Authored-By, etc.) was silently dropped, making the session
+note too sparse to serve as a meaningful feature log.
+
+### Changes
+
+- `src/lib/agent/schemas.ts`: added `body` field to `checkpointSchema` (optional, max 5000 chars).
+- `src/lib/agent/sessions.ts`: `renderCheckpoint` now emits a `### Summary` section when `body` is non-empty.
+- `.claude/hooks/checkpoint.js`: after parsing subject + SHA from tool_response, runs `git log -1 --pretty=%b` in the worktree CWD to fetch the body and includes it in the checkpoint API call.
+
+### Convention
+
+Writing a descriptive commit message body is now the natural way to get a
+feature summary into the notes-app session note — no separate MCP call needed.

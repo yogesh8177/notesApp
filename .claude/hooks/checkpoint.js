@@ -1,5 +1,17 @@
 #!/usr/bin/env node
+const { execSync } = require("child_process");
 const { detectContext, readStdin, loadSession, api } = require("./_lib");
+
+function gitInDir(cmd, cwd) {
+  try {
+    return execSync(`git ${cmd}`, {
+      stdio: ["ignore", "pipe", "ignore"],
+      ...(cwd ? { cwd } : {}),
+    }).toString().trim();
+  } catch {
+    return "";
+  }
+}
 
 function classify(input) {
   switch (input.hook_event_name) {
@@ -43,6 +55,7 @@ function parseCommitOutput(output) {
 
   const done = [];
   let ctx;
+  let body = "";
 
   if (event === "commit") {
     // Detect context from the worktree where the commit actually happened.
@@ -57,6 +70,9 @@ function parseCommitOutput(output) {
       done.push(parsed.subject);
       ctx = { ...ctx, lastCommit: parsed.sha };
     }
+
+    // Fetch the commit body (everything after the subject line).
+    body = gitInDir("log -1 --pretty=%b", worktreeCwd);
   } else {
     ctx = detectContext();
   }
@@ -68,6 +84,7 @@ function parseCommitOutput(output) {
       branch: ctx.branch,
       agentId: ctx.agentId,
       lastCommit: ctx.lastCommit,
+      body,
       done,
       next: [],
       issues: [],
