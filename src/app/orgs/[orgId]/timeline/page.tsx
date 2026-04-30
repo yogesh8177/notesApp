@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  FileText,
   FilePlus,
   FileMinus,
   Pencil,
