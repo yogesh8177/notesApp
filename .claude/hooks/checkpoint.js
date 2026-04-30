@@ -29,9 +29,10 @@ function classify(input) {
 }
 
 // Handle all tool_response shapes Claude Code may emit:
-//   string | { output: string } | { content: [{type:"text", text:string}] }
+//   string | { stdout: string } | { output: string } | { content: [{type:"text", text:string}] }
 function extractOutput(toolResponse) {
   if (typeof toolResponse === "string") return toolResponse;
+  if (typeof toolResponse?.stdout === "string") return toolResponse.stdout;
   if (typeof toolResponse?.output === "string") return toolResponse.output;
   const first = toolResponse?.content?.[0];
   if (first?.type === "text" && typeof first.text === "string") return first.text;
