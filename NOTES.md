@@ -1092,3 +1092,4 @@ Testing that the checkpoint hook now correctly:
 - Does not write duplicate entries for non-commit Bash calls
 debug trigger
 debug2
+trace test
