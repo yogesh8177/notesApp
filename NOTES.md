@@ -1091,3 +1091,4 @@ Testing that the checkpoint hook now correctly:
 - Captures body in ### Summary
 - Does not write duplicate entries for non-commit Bash calls
 debug trigger
+debug2
