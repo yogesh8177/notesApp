@@ -19,6 +19,11 @@ import {
   LogOut,
   Lock,
   Activity,
+  Search,
+  Wrench,
+  Database,
+  Bot,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
@@ -74,6 +79,22 @@ function getActionMeta(action: string): ActionMeta {
     return { icon: LogOut, colour: "bg-zinc-100 text-zinc-600", label: "Signed out" };
   if (action === "permission.denied")
     return { icon: Lock, colour: "bg-rose-100 text-rose-700", label: "Permission denied" };
+  if (action === "search.execute")
+    return { icon: Search, colour: "bg-sky-100 text-sky-700", label: "Search" };
+  if (action === "mcp.tool.call")
+    return { icon: Wrench, colour: "bg-violet-100 text-violet-700", label: "Tool call" };
+  if (action === "mcp.tool.error")
+    return { icon: AlertCircle, colour: "bg-rose-100 text-rose-700", label: "Tool error" };
+  if (action === "mcp.resource.read")
+    return { icon: Database, colour: "bg-zinc-100 text-zinc-600", label: "Resource read" };
+  if (action === "mcp.resource.error")
+    return { icon: AlertCircle, colour: "bg-rose-100 text-rose-700", label: "Resource error" };
+  if (action === "agent.event.subagent.start")
+    return { icon: Bot, colour: "bg-emerald-100 text-emerald-700", label: "Subagent started" };
+  if (action === "agent.event.subagent.stop")
+    return { icon: Bot, colour: "bg-zinc-100 text-zinc-600", label: "Subagent stopped" };
+  if (action === "agent.event.subagent.tool.call")
+    return { icon: Wrench, colour: "bg-sky-100 text-sky-700", label: "Subagent tool call" };
   return { icon: Activity, colour: "bg-zinc-100 text-zinc-600", label: action };
 }
 
@@ -218,6 +239,78 @@ function EventDescription({
   if (action === "auth.signin") return <span>Signed in</span>;
   if (action === "auth.signout") return <span>Signed out</span>;
   if (action === "permission.denied") return <span>Permission denied on {event.resourceType ?? "resource"}</span>;
+
+  if (action === "search.execute") {
+    const q = typeof event.metadata.q === "string" ? event.metadata.q : "";
+    const resultCount = typeof event.metadata.resultCount === "number" ? event.metadata.resultCount : null;
+    const latencyMs = typeof event.metadata.latencyMs === "number" ? event.metadata.latencyMs : null;
+    const page = typeof event.metadata.page === "number" && event.metadata.page > 1 ? event.metadata.page : null;
+    return (
+      <span className="flex flex-wrap items-baseline gap-1.5">
+        <span>Searched for <span className="font-medium">&ldquo;{q}&rdquo;</span></span>
+        {resultCount !== null && <span className="text-xs text-muted-foreground">— {resultCount} result{resultCount !== 1 ? "s" : ""}</span>}
+        {latencyMs !== null && <span className="text-xs text-muted-foreground">in {latencyMs}ms</span>}
+        {page !== null && <span className="text-xs text-muted-foreground">page {page}</span>}
+      </span>
+    );
+  }
+
+  if (action === "mcp.tool.call" || action === "mcp.tool.error") {
+    const toolName = typeof event.resourceId === "string" ? event.resourceId : "unknown";
+    const tokenName = typeof event.metadata.tokenName === "string" ? event.metadata.tokenName : null;
+    const durationMs = typeof event.metadata.durationMs === "number" ? event.metadata.durationMs : null;
+    const error = typeof event.metadata.error === "string" ? event.metadata.error : null;
+    return (
+      <span className="flex flex-wrap items-baseline gap-1.5">
+        <span>{action === "mcp.tool.error" ? "Tool error" : "Called tool"} <span className="font-mono text-xs font-medium">{toolName}</span></span>
+        {tokenName && <span className="text-xs text-muted-foreground">via {tokenName}</span>}
+        {durationMs !== null && !error && <span className="text-xs text-muted-foreground">{durationMs}ms</span>}
+        {error && <span className="text-xs text-rose-600 truncate max-w-xs" title={error}>{error}</span>}
+      </span>
+    );
+  }
+
+  if (action === "mcp.resource.read" || action === "mcp.resource.error") {
+    const resourceName = typeof event.resourceId === "string" ? event.resourceId : "unknown";
+    const tokenName = typeof event.metadata.tokenName === "string" ? event.metadata.tokenName : null;
+    const durationMs = typeof event.metadata.durationMs === "number" ? event.metadata.durationMs : null;
+    const error = typeof event.metadata.error === "string" ? event.metadata.error : null;
+    return (
+      <span className="flex flex-wrap items-baseline gap-1.5">
+        <span>{action === "mcp.resource.error" ? "Resource error" : "Read resource"} <span className="font-mono text-xs font-medium">{resourceName}</span></span>
+        {tokenName && <span className="text-xs text-muted-foreground">via {tokenName}</span>}
+        {durationMs !== null && !error && <span className="text-xs text-muted-foreground">{durationMs}ms</span>}
+        {error && <span className="text-xs text-rose-600 truncate max-w-xs" title={error}>{error}</span>}
+      </span>
+    );
+  }
+
+  if (action === "agent.event.subagent.start" || action === "agent.event.subagent.stop") {
+    const agentType = typeof event.metadata.agentType === "string" ? event.metadata.agentType : null;
+    const agentId = typeof event.metadata.agentId === "string" ? event.metadata.agentId : null;
+    const tokenName = typeof event.metadata.tokenName === "string" ? event.metadata.tokenName : null;
+    const verb = action === "agent.event.subagent.start" ? "started" : "stopped";
+    return (
+      <span className="flex flex-wrap items-baseline gap-1.5">
+        <span>Subagent {agentType ? <span className="font-medium">{agentType}</span> : "unknown"} {verb}</span>
+        {tokenName && <span className="text-xs text-muted-foreground">via {tokenName}</span>}
+        {agentId && <span className="font-mono text-xs text-muted-foreground" title={agentId}>{agentId.slice(0, 8)}</span>}
+      </span>
+    );
+  }
+
+  if (action === "agent.event.subagent.tool.call") {
+    const toolName = typeof event.metadata.toolName === "string" ? event.metadata.toolName : null;
+    const agentType = typeof event.metadata.agentType === "string" ? event.metadata.agentType : null;
+    const tokenName = typeof event.metadata.tokenName === "string" ? event.metadata.tokenName : null;
+    return (
+      <span className="flex flex-wrap items-baseline gap-1.5">
+        <span>Subagent called{toolName ? <> tool <span className="font-mono text-xs font-medium">{toolName}</span></> : " a tool"}</span>
+        {agentType && <span className="text-xs text-muted-foreground">({agentType})</span>}
+        {tokenName && <span className="text-xs text-muted-foreground">via {tokenName}</span>}
+      </span>
+    );
+  }
 
   return <span className="text-muted-foreground">{action}</span>;
 }
