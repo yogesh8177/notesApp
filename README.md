@@ -229,6 +229,20 @@ The seed creates auth users, org memberships, notes with version history, shared
 
 The app exposes two Bearer-token-authed surfaces for agentic use, both keyed off the same `MEMORY_AGENT_TOKEN` and bound to a single (`MEMORY_AGENT_ORG_ID`, `MEMORY_AGENT_USER_ID`) service principal.
 
+### Claude Code hooks
+
+The `.claude/hooks/` directory wires Claude Code lifecycle events into the notes app so every agent session is automatically checkpointed as a note.
+
+| Hook | Event | What it does |
+|---|---|---|
+| `session-start.js` | `SessionStart` | Bootstraps or resumes a session note; injects the last checkpoint as context |
+| `checkpoint.js` | `Stop` / `SubagentStop` | Appends a checkpoint (done/next/issues/decisions) to the session note via `update_note` |
+| `_lib.js` | — | Shared helpers: state dir resolution, subagent context extraction, tool-response parsing |
+
+**State dir** is resolved relative to `__dirname` (the hooks directory), not `process.cwd()`. This matters when a Bash tool invocation starts with `cd <worktree>` — without the fix, the hook would write its state file into the worktree instead of the main repo's `.claude/state/`.
+
+**Tool-response parsing** (`extractOutput` in `_lib.js`) handles all shapes Claude Code may emit: `string`, `{ stdout }`, `{ output }`, and `{ content: [{ type: "text", text }] }`.
+
 ### Memory bridge — `/agent/*`
 
 `POST /agent/bootstrap` and `POST /agent/sessions/:id/checkpoint`. Used by the Claude Code hooks in [.claude/hooks/](.claude/hooks/) to persist agent session state as notes + versions. See [NOTES.md](NOTES.md) for the design log.

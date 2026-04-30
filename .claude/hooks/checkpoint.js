@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { execSync } = require("child_process");
-const { detectContext, readStdin, loadSession, api } = require("./_lib");
+const { detectContext, readStdin, loadSession, saveSession, api } = require("./_lib");
 
 function gitInDir(cmd, cwd) {
   try {
@@ -68,7 +68,7 @@ function parseCommitOutput(output) {
     return;
   }
 
-  const done = [];
+  let done = [];
   let ctx;
   let body = "";
 
@@ -86,8 +86,15 @@ function parseCommitOutput(output) {
     ctx = { ...ctx, lastCommit: parsed.sha };
 
     body = gitInDir("log -1 --pretty=%b", worktreeCwd);
+
+    // Accumulate done items in session state so stop/compact can carry them forward.
+    const accumulated = session.accumulatedDone ?? [];
+    accumulated.push(parsed.subject);
+    saveSession(sessionId, { ...session, accumulatedDone: accumulated });
   } else {
     ctx = detectContext();
+    // Drain accumulated done items from session state.
+    done = session.accumulatedDone ?? [];
   }
 
   try {
