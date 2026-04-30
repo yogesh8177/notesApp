@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { execSync } = require("child_process");
 const { detectContext, readStdin, loadSession, api } = require("./_lib");
 
@@ -38,7 +39,6 @@ function extractOutput(toolResponse) {
 }
 
 // Handles double-quoted, single-quoted, and bare paths.
-// Matches: cd "path" && / cd 'path' && / cd path &&
 function extractCwd(command) {
   if (!command) return null;
   const m = command.match(/^cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)/);
@@ -47,7 +47,7 @@ function extractCwd(command) {
 }
 
 // Parse git commit stdout: "[branch sha] subject" → { sha, subject }
-// \S+ covers any branch name (slashes, hyphens, dots, etc.)
+// \S+ covers any branch name (slashes, hyphens, dots, merge formats, etc.)
 function parseCommitOutput(output) {
   if (typeof output !== "string") return null;
   const m = output.match(/^\[(\S+)\s+([0-9a-f]+)\]\s+(.+)/m);

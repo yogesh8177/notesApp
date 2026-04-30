@@ -369,3 +369,13 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **What:** Three independent parsing failures: tool_response format not normalised, extractCwd only handled double-quoted paths, parseCommitOutput branch-name regex too narrow.
 **Why bad:** Checkpoint entries had empty `### Done`, wrong commit SHA (fell back to main HEAD), and subject line silently dropped.
 **Fix:** `extractOutput()` handles string/output/content shapes; `extractCwd` handles double/single-quoted and bare paths; `parseCommitOutput` uses `\S+` for branch name.
+
+---
+
+## [HIGH] Concurrent checkpoint writes cause duplicate key on note_versions (fix: fix/checkpoint-parsing)
+
+**Where:** `src/lib/agent/sessions.ts:230` (read-then-write version increment)
+**Found by:** orchestrator (PostgresError 23505 duplicate key on note_id+version)
+**What:** `checkpoint()` read `currentVersion`, computed `+1`, then inserted into `note_versions`. Two concurrent hook firings both read the same version and raced to insert the same `(noteId, version)` pair.
+**Why bad:** Checkpoint writes fail with an unhandled 500; session note stops updating until next successful write.
+**Fix:** Reversed the order — UPDATE notes with `current_version + 1 RETURNING current_version` first (PostgreSQL row lock serialises concurrent calls), then INSERT note_versions with the atomically claimed version number.

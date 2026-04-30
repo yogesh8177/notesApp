@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentSessions,
@@ -227,7 +227,20 @@ export async function checkpoint(
       return { kind: "error" as const, error: "FORBIDDEN" as const };
     }
 
-    const nextVersion = note.currentVersion + 1;
+    // Atomically claim the next version number. PostgreSQL row-level locking
+    // on this UPDATE serialises concurrent checkpoint calls that would otherwise
+    // both read the same currentVersion and produce duplicate note_versions rows.
+    const [updated] = await tx
+      .update(notes)
+      .set({
+        content: body,
+        currentVersion: sql`${notes.currentVersion} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(notes.id, note.id))
+      .returning({ nextVersion: notes.currentVersion });
+
+    const nextVersion = updated.nextVersion;
 
     await tx.insert(noteVersions).values({
       noteId: note.id,
@@ -238,15 +251,6 @@ export async function checkpoint(
       changedBy: userId,
       changeSummary: `${input.event}${input.lastCommit ? ` @ ${input.lastCommit.slice(0, 8)}` : ""}`,
     });
-
-    await tx
-      .update(notes)
-      .set({
-        content: body,
-        currentVersion: nextVersion,
-        updatedAt: new Date(),
-      })
-      .where(eq(notes.id, note.id));
 
     // Touch lastSeenAt on the matching session row (best-effort — the note
     // is the source of truth, this is just for "which agent was active recently").
