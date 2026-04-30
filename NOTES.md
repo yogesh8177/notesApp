@@ -1019,3 +1019,20 @@ Scoped EventDescription — no note links (already on the note). Day-grouped ide
 ### Cleanup note
 
 The `and`/`or`/`sql` imports added to `queries.ts` are the only new drizzle symbols; no new dependencies.
+
+---
+
+## 2026-04-30 — Per-note timeline: agent/MCP event visibility + rich metadata (orchestrator)
+
+### Problem
+
+Two bugs in the per-note timeline (`notes/[id]/timeline`):
+
+1. **Query gap**: `getNoteTimeline` only joined by `resource_type='note' AND resource_id=noteId` or `action LIKE 'ai.summary.%'`. MCP tool calls (`get_note`, `update_note`) are stored as `resource_type='mcp'` with `metadata.noteId` — they were invisible.
+
+2. **UI gap**: `getActionMeta` and `EventDescription` in the per-note timeline had no branches for `mcp.*`, `agent.event.*`, `agent.session.*`, `search.execute` — all fell through to raw action text.
+
+### Fix
+
+- `src/lib/timeline/queries.ts`: replaced the two-clause OR with a generalised `metadata->>'noteId' = noteId` second branch (covers ai.summary.*, mcp.tool.*, and any future event that embeds noteId in metadata). Also simplified `resolvedNoteId` mapping.
+- `src/app/orgs/[orgId]/notes/[noteId]/timeline/page.tsx`: added icon + colour entries for all mcp/agent/search actions; added full `EventDescription` branches matching the org-wide timeline.

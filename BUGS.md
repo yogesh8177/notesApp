@@ -339,3 +339,13 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 4. Add `agent_sessions` and `agent_tokens` RLS policies: `org_id IN (SELECT org_id FROM memberships WHERE user_id = auth.uid())` for `agent_sessions`; `agent_tokens` should additionally restrict to org admins/owners since the token list is admin-only in the UI. Today both tables are `ENABLE ROW LEVEL SECURITY` with no policies (deny-all for non-superuser) — correct only as long as the superuser-equivalent Drizzle client is the sole reader.
 
 **Fix commit:** _(none — known issue)_
+
+---
+
+## [MED] Per-note timeline missing MCP/agent events (fix: feat/note-timeline-agent-events)
+
+**Where:** `src/lib/timeline/queries.ts:41` / `src/app/orgs/[orgId]/notes/[noteId]/timeline/page.tsx:23`
+**Found by:** orchestrator
+**What:** `getNoteTimeline` query didn't match `mcp.tool.*` / `mcp.resource.*` audit rows (stored with `resource_type='mcp'`); per-note `EventDescription` had no branches for those action types.
+**Why bad:** Agent reads/writes to a note via MCP (`get_note`, `update_note`) were invisible in that note's activity feed; any that did surface would render as raw action strings.
+**Fix:** Extended OR clause to `metadata->>'noteId' = noteId`; added icon mappings and full metadata rendering for mcp/agent/search events in the per-note timeline page.
