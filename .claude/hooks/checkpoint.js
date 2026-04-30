@@ -98,8 +98,9 @@ function parseCommitOutput(output) {
     done = session.accumulatedDone ?? [];
   }
 
-  const decisions = session.accumulatedDecisions ?? [];
-  const issues = session.accumulatedIssues ?? [];
+  const decisions = [...new Set(session.accumulatedDecisions ?? [])];
+  const issues = [...new Set(session.accumulatedIssues ?? [])];
+  done = [...new Set(done)];
 
   try {
     await api("POST", `/agent/sessions/${session.sessionNoteId}/checkpoint`, {
