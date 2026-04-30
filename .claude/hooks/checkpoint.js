@@ -72,16 +72,17 @@ function parseCommitOutput(output) {
   let body = "";
 
   if (event === "commit") {
+    const output = extractOutput(input.tool_response);
+    const parsed = parseCommitOutput(output);
+    // If the Bash output doesn't contain a git commit line, this hook fired
+    // for a non-commit Bash call — skip to avoid spurious checkpoint writes.
+    if (!parsed) return;
+
     const command = input.tool_input?.command ?? "";
     const worktreeCwd = extractCwd(command) || undefined;
     ctx = detectContext(worktreeCwd);
-
-    const output = extractOutput(input.tool_response);
-    const parsed = parseCommitOutput(output);
-    if (parsed) {
-      done.push(parsed.subject);
-      ctx = { ...ctx, lastCommit: parsed.sha };
-    }
+    done.push(parsed.subject);
+    ctx = { ...ctx, lastCommit: parsed.sha };
 
     body = gitInDir("log -1 --pretty=%b", worktreeCwd);
   } else {

@@ -379,3 +379,13 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **What:** `checkpoint()` read `currentVersion`, computed `+1`, then inserted into `note_versions`. Two concurrent hook firings both read the same version and raced to insert the same `(noteId, version)` pair.
 **Why bad:** Checkpoint writes fail with an unhandled 500; session note stops updating until next successful write.
 **Fix:** Reversed the order — UPDATE notes with `current_version + 1 RETURNING current_version` first (PostgreSQL row lock serialises concurrent calls), then INSERT note_versions with the atomically claimed version number.
+
+---
+
+## [MED] checkpoint hook fires on every Bash call, not just git commits (fix: fix/checkpoint-parsing)
+
+**Where:** `.claude/hooks/checkpoint.js:74` (PostToolUse path)
+**Found by:** orchestrator (4 duplicate checkpoint entries per commit, empty done arrays)
+**What:** `if: "Bash(git commit *)"` in settings.json does not filter hook execution — hook fires for every Bash tool call. `classify()` returned "commit" for all PostToolUse events unconditionally.
+**Why bad:** Every Bash call (file reads, tsc, git push, etc.) wrote a spurious checkpoint with empty done/wrong SHA, bloating session note history.
+**Fix:** In the `"commit"` branch, parse tool_response first — if no git commit line is found, return early before writing any checkpoint.
