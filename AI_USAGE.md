@@ -376,3 +376,19 @@ Worse, in this codebase the `AuditAction` type already had `permission.denied` d
 **What was right:** Grepping audit call sites directly rather than guessing field names — actual field names confirmed before writing any render code.
 
 **What was wrong (pre-fix):** The original `EventDescription` rendered a meaningful label for note/file/AI/org/auth events but left the agent and MCP action types as raw strings. All the data to render them richly was already in the DB; the render layer just hadn't been extended when those action types were added.
+
+## 2026-04-30 — Per-note timeline (orchestrator, no sub-agent)
+
+**Trigger:** User asked to add a per-note activity timeline and whether it was possible with the existing schema.
+
+**What I did:**
+1. Read `src/lib/db/schema/audit.ts` — confirmed `resource_type` + `resource_id` columns exist but no index on them; existing indexes are `(org_id, created_at)`, `action`, `(user_id, created_at)`.
+2. Read existing `getOrgTimeline` in `queries.ts` and the org timeline page — understood `TimelineEvent` shape, AI summary metadata pattern, day-grouping structure.
+3. Read `notes/[noteId]/layout.tsx` — found the tab nav pattern to extend.
+4. Added index to schema + migration, `getNoteTimeline` query, per-note page, and layout tab in four logical commits.
+
+**No sub-agent used** — all context derivable from four file reads; spawning would have re-derived the same.
+
+**What was right:** Identifying that the `and`/`or`/`sql` pattern from drizzle handles the mixed WHERE condition (indexed resource row OR jsonb metadata match) cleanly in one query rather than two.
+
+**What was wrong:** Nothing significant. The `isSameDay` / date formatting helpers are duplicated between the org and per-note page — could be extracted to a shared util, but left as-is per the no-premature-abstraction rule.
