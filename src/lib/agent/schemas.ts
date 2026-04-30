@@ -19,6 +19,7 @@ export const checkpointSchema = z.object({
   branch: identifier,
   agentId: identifier,
   lastCommit: z.string().trim().max(64).optional().default(""),
+  body: z.string().trim().max(5000).optional().default(""),
   done: z.array(z.string().trim().min(1).max(500)).max(50).default([]),
   next: z.array(z.string().trim().min(1).max(500)).max(50).default([]),
   issues: z.array(z.string().trim().min(1).max(500)).max(50).default([]),
