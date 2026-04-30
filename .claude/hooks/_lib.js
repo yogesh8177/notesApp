@@ -55,7 +55,10 @@ function subagentContext(input) {
 }
 
 function stateDir() {
-  const dir = path.join(process.cwd(), ".claude", "state");
+  // Use __dirname (hooks dir) not process.cwd() — when the Bash command starts
+  // with `cd <worktree>`, the hook inherits that CWD and would look for the
+  // state file in the wrong place.
+  const dir = path.join(__dirname, "..", "state");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
