@@ -87,8 +87,7 @@ function parseCommitOutput(output) {
     body = gitInDir("log -1 --pretty=%b", worktreeCwd);
 
     // Accumulate done/decisions/issues in session state so stop/compact can carry them forward.
-    const accumulated = session.accumulatedDone ?? [];
-    accumulated.push(parsed.subject);
+    const accumulated = [...new Set([...(session.accumulatedDone ?? []), parsed.subject])];
     saveSession(sessionId, { ...session, accumulatedDone: accumulated });
     // Use the full accumulated list so mid-session checkpoints also show all done items.
     done = accumulated;

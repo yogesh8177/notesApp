@@ -35,8 +35,7 @@ if (!session?.sessionNoteId) {
 }
 
 const key = type === "done" ? "accumulatedDone" : type === "decision" ? "accumulatedDecisions" : "accumulatedIssues";
-const accumulated = session[key] ?? [];
-accumulated.push(text);
+const accumulated = [...new Set([...(session[key] ?? []), text])];
 saveSession(current.sessionId, { ...session, [key]: accumulated });
 
 process.stdout.write(`[log] ${type} logged: ${text}\n`);
