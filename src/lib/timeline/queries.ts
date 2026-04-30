@@ -39,7 +39,7 @@ export async function getNoteTimeline(
         eq(auditLog.orgId, orgId),
         or(
           and(eq(auditLog.resourceType, "note"), eq(auditLog.resourceId, noteId)),
-          sql`(${auditLog.action} LIKE 'ai.summary.%' AND ${auditLog.metadata}->>'noteId' = ${noteId})`,
+          sql`${auditLog.metadata}->>'noteId' = ${noteId}`,
         ),
       ),
     )
@@ -61,7 +61,7 @@ export async function getNoteTimeline(
     const resolvedNoteId =
       row.resourceType === "note" && row.resourceId
         ? row.resourceId
-        : row.action.startsWith("ai.summary.") && typeof meta.noteId === "string"
+        : typeof meta.noteId === "string"
           ? meta.noteId
           : null;
     const noteInfo = resolvedNoteId ? noteTitleMap.get(resolvedNoteId) : undefined;
