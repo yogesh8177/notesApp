@@ -1095,3 +1095,4 @@ debug2
 trace test
 x
 y
+z
