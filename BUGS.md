@@ -349,3 +349,13 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **What:** `getNoteTimeline` query didn't match `mcp.tool.*` / `mcp.resource.*` audit rows (stored with `resource_type='mcp'`); per-note `EventDescription` had no branches for those action types.
 **Why bad:** Agent reads/writes to a note via MCP (`get_note`, `update_note`) were invisible in that note's activity feed; any that did surface would render as raw action strings.
 **Fix:** Extended OR clause to `metadata->>'noteId' = noteId`; added icon mappings and full metadata rendering for mcp/agent/search events in the per-note timeline page.
+
+---
+
+## [LOW] Checkpoint dropped commit body — session note too sparse (fix: feat/checkpoint-commit-body)
+
+**Where:** `.claude/hooks/checkpoint.js:55` / `src/lib/agent/sessions.ts:169`
+**Found by:** orchestrator
+**What:** `checkpoint.js` only parsed the commit subject from tool_response; `renderCheckpoint` had no field for extended description, so commit bodies were silently discarded.
+**Why bad:** Session notes lacked feature context — only one-liner subjects, no description of what changed or why.
+**Fix:** Added `body` field to `checkpointSchema`; `renderCheckpoint` emits `### Summary` when body is present; hook fetches body via `git log -1 --pretty=%b` in the worktree CWD.
