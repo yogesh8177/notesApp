@@ -15,14 +15,15 @@ const { detectContext, readStdin, saveSession, api } = require("./_lib");
       source,
     });
 
-    saveSession(sessionId, { sessionNoteId: res.sessionNoteId, ...ctx });
+    const payload = res.data;
+    saveSession(sessionId, { sessionNoteId: payload.sessionNoteId, ...ctx });
 
     const text = [
       "ORG GUIDELINES:",
-      res.guidelines || "(none)",
+      payload.guidelines || "(none)",
       "",
       "RESUME CHECKPOINT:",
-      res.latestCheckpoint || "(no prior checkpoint)",
+      payload.latestCheckpoint || "(no prior checkpoint)",
     ].join("\n");
 
     process.stdout.write(
