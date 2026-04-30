@@ -1093,3 +1093,4 @@ Testing that the checkpoint hook now correctly:
 debug trigger
 debug2
 trace test
+x
