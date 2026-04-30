@@ -106,7 +106,21 @@ event that should persist (auth, mutations, AI calls, denials, failures).
 Every server action / route handler input goes through a zod schema. Use
 `fromZod(error)` and `toResponse(result)` from `lib/validation/result.ts`.
 
-### 10. Distrust your own output
+### 10. Credit subagent work after every Agent call
+
+After every `Agent` tool call returns, immediately run:
+
+```bash
+node .claude/hooks/log.js done "<commit subject>"
+```
+
+once per commit the subagent reports making. Do this before moving on to the
+next task. Dedup is handled automatically — calling it for an item already
+present is safe. This is required because concurrent hook writes race on the
+session file and drop items; `log.js done` is the correctness guarantee, not
+the hook.
+
+### 11. Distrust your own output
 
 Before committing, re-read the diff. Search for: `console.log`, `TODO`,
 hardcoded UUIDs, missing `org_id` filters, unsafe `redirect_to` use, raw

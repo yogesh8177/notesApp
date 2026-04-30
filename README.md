@@ -225,6 +225,153 @@ The seed creates auth users, org memberships, notes with version history, shared
 | `npm run seed` | Small dev seed |
 | `npm run seed:large` | 10k-note seed |
 
+## Agent session logging — setup guide
+
+This section covers everything needed to wire a Claude Code project to the notes app so that every agent session is automatically checkpointed, recalled on resume, and visible in the timeline.
+
+### How it works
+
+```
+SessionStart  → bootstrap.js  → POST /agent/bootstrap
+                                 ↳ creates/resumes a session note
+                                 ↳ injects last checkpoint + org guidelines as context
+
+UserPromptSubmit → recall.js  → POST /agent/search
+                                 ↳ semantic search against notes
+                                 ↳ injects top-K hits as context before the model sees the prompt
+
+PostToolUse (git commit) → checkpoint.js → POST /agent/sessions/:id/checkpoint
+                                 ↳ appends done item to accumulated list in session state
+
+PostToolUse (mcp__notes-app__*) → event.js → POST /agent/sessions/:id/event
+SubagentStart / SubagentStop    ↗           ↳ writes audit_log row (tool, agent, duration)
+
+PreCompact / SessionEnd → checkpoint.js → POST /agent/sessions/:id/checkpoint
+                                 ↳ final snapshot: all accumulated done/decisions/issues
+```
+
+### Prerequisites
+
+- The notes app running and reachable (local or deployed)
+- A service principal registered in the app: one org, one user, one API token
+- Claude Code CLI installed in the project
+
+### Step 1 — Register a service principal
+
+Create a user + org in the running app, then generate a `MEMORY_AGENT_TOKEN` via the app's admin interface or directly in the database. The token is bound to a fixed `(orgId, userId)` pair server-side — all agent notes are scoped to that principal.
+
+### Step 2 — Set environment variables
+
+Add these to your shell profile or `.env.local` (do **not** commit):
+
+| Variable | Purpose |
+|---|---|
+| `MEMORY_AGENT_TOKEN` | Bearer token for `/agent/*` and `/mcp` endpoints |
+| `MEMORY_API_URL` | Base URL of the running notes app (default: `http://localhost:3000`) |
+
+The hooks read `MEMORY_API_URL` and `MEMORY_AGENT_TOKEN` from the environment at runtime. If either is unset, hooks fail silently to stderr — the agent session continues unaffected.
+
+### Step 3 — Add `.mcp.json` to the project root
+
+```json
+{
+  "mcpServers": {
+    "notes-app": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MEMORY_AGENT_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Replace `http://localhost:3000` with your deployed URL. The `${MEMORY_AGENT_TOKEN}` placeholder is expanded by Claude Code from the environment at session start.
+
+### Step 4 — Add `.claude/settings.json` to the project
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/bootstrap.js" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/recall.js" }] }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "if": "Bash(git commit *)",
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/checkpoint.js" }]
+      },
+      {
+        "matcher": "mcp__notes-app__.*",
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/event.js" }]
+      }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/event.js" }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/event.js" }] }
+    ],
+    "PreCompact": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/checkpoint.js" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/checkpoint.js" }] }
+    ]
+  }
+}
+```
+
+### Step 5 — Copy the hook scripts
+
+Copy the `.claude/hooks/` directory from this repo into the target project. The hooks have no external dependencies beyond Node.js built-ins (`fs`, `child_process`, `os`, `path`). The directory layout must be preserved:
+
+```
+.claude/
+  hooks/
+    _lib.js          ← shared helpers (state I/O, API client, git, context detection)
+    bootstrap.js     ← SessionStart
+    recall.js        ← UserPromptSubmit
+    checkpoint.js    ← PostToolUse (commit) + PreCompact + SessionEnd
+    event.js         ← PostToolUse (MCP) + SubagentStart + SubagentStop
+    log.js           ← manual crediting utility (see below)
+  state/             ← created automatically at runtime
+  settings.json      ← from Step 4
+```
+
+> **State dir** is resolved relative to the hooks directory (`__dirname`), not `process.cwd()`. This ensures the state file is always in the main repo even when a Bash command starts with `cd <worktree>`.
+
+### Step 6 — Credit subagent work after every Agent call
+
+`PostToolUse` hook writes race on the session state file when multiple subagents commit concurrently — some items are silently dropped. The reliable path is a manual call immediately after each subagent returns:
+
+```bash
+node .claude/hooks/log.js done "feat(module): what the subagent shipped"
+```
+
+Call this once per commit the subagent reports, for every Agent call. Dedup is handled automatically — calling it for an item that was already auto-accumulated is a no-op.
+
+The same utility logs decisions and issues that should surface in the final checkpoint:
+
+```bash
+node .claude/hooks/log.js decision "Chose X over Y because Z"
+node .claude/hooks/log.js issue "Race condition in file upload handler"
+```
+
+### Reliability summary
+
+| Scenario | Auto via hook | Needs `log.js done` |
+|---|---|---|
+| Single agent, sequential commits | ✅ | No |
+| Parallel non-worktree subagents | Partial (race drops items) | Yes |
+| Parallel worktree subagents | Partial (race drops items) | Yes |
+| Decisions / issues | Never | Always |
+
 ## Agent integrations
 
 The app exposes two Bearer-token-authed surfaces for agentic use, both keyed off the same `MEMORY_AGENT_TOKEN` and bound to a single (`MEMORY_AGENT_ORG_ID`, `MEMORY_AGENT_USER_ID`) service principal.
