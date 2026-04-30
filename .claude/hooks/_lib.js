@@ -70,6 +70,23 @@ function saveSession(sessionId, data) {
   );
 }
 
+function saveCurrentSession(sessionId) {
+  fs.writeFileSync(
+    path.join(stateDir(), "current.json"),
+    JSON.stringify({ sessionId }),
+  );
+}
+
+function loadCurrentSession() {
+  try {
+    return JSON.parse(
+      fs.readFileSync(path.join(stateDir(), "current.json"), "utf8"),
+    );
+  } catch {
+    return null;
+  }
+}
+
 function loadSession(sessionId) {
   try {
     return JSON.parse(
@@ -101,6 +118,8 @@ module.exports = {
   readStdin,
   subagentContext,
   saveSession,
+  saveCurrentSession,
+  loadCurrentSession,
   loadSession,
   api,
 };
