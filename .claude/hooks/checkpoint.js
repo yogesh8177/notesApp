@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { execSync } = require("child_process");
 const { detectContext, readStdin, loadSession, api } = require("./_lib");
 
@@ -27,18 +28,31 @@ function classify(input) {
   }
 }
 
-// Extract working directory from "cd /some/path && git commit ..."
+// Handle all tool_response shapes Claude Code may emit:
+//   string | { output: string } | { content: [{type:"text", text:string}] }
+function extractOutput(toolResponse) {
+  if (typeof toolResponse === "string") return toolResponse;
+  if (typeof toolResponse?.output === "string") return toolResponse.output;
+  const first = toolResponse?.content?.[0];
+  if (first?.type === "text" && typeof first.text === "string") return first.text;
+  return "";
+}
+
+// Handles double-quoted, single-quoted, and bare paths.
 function extractCwd(command) {
-  const m = command?.match(/^cd\s+"?([^"&\n]+?)"?\s*&&/);
-  return m ? m[1].trim() : null;
+  if (!command) return null;
+  const m = command.match(/^cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)/);
+  if (!m) return null;
+  return (m[1] ?? m[2] ?? m[3]).trim();
 }
 
 // Parse git commit stdout: "[branch sha] subject" → { sha, subject }
+// \S+ covers any branch name (slashes, hyphens, dots, merge formats, etc.)
 function parseCommitOutput(output) {
   if (typeof output !== "string") return null;
-  const m = output.match(/^\[[\w/.\-]+\s+([0-9a-f]+)\]\s+(.+)/m);
+  const m = output.match(/^\[(\S+)\s+([0-9a-f]+)\]\s+(.+)/m);
   if (!m) return null;
-  return { sha: m[1], subject: m[2].trim() };
+  return { sha: m[2], subject: m[3].trim() };
 }
 
 (async () => {
@@ -58,20 +72,18 @@ function parseCommitOutput(output) {
   let body = "";
 
   if (event === "commit") {
-    // Detect context from the worktree where the commit actually happened.
+    const output = extractOutput(input.tool_response);
+    const parsed = parseCommitOutput(output);
+    // If the Bash output doesn't contain a git commit line, this hook fired
+    // for a non-commit Bash call — skip to avoid spurious checkpoint writes.
+    if (!parsed) return;
+
     const command = input.tool_input?.command ?? "";
     const worktreeCwd = extractCwd(command) || undefined;
     ctx = detectContext(worktreeCwd);
+    done.push(parsed.subject);
+    ctx = { ...ctx, lastCommit: parsed.sha };
 
-    // Pull subject + SHA from the Bash tool output — no extra git subprocess needed.
-    const output = input.tool_response?.output ?? input.tool_response ?? "";
-    const parsed = parseCommitOutput(typeof output === "string" ? output : "");
-    if (parsed) {
-      done.push(parsed.subject);
-      ctx = { ...ctx, lastCommit: parsed.sha };
-    }
-
-    // Fetch the commit body (everything after the subject line).
     body = gitInDir("log -1 --pretty=%b", worktreeCwd);
   } else {
     ctx = detectContext();
