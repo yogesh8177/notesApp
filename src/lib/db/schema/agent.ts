@@ -107,7 +107,7 @@ export const conversationTurns = pgTable(
     noteRefs: jsonb("note_refs")
       .$type<{ noteId: string; version?: number; title?: string }[]>()
       .default([]),
-    idempotencyKey: text("idempotency_key"),
+    idempotencyKey: text("idempotency_key").unique("conversation_turns_idempotency_key_unique"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -117,9 +117,6 @@ export const conversationTurns = pgTable(
     sessionTurnUnique: uniqueIndex("conversation_turns_session_turn_unique").on(
       t.sessionNoteId,
       t.turnIndex,
-    ),
-    idempotencyKeyUnique: uniqueIndex("conversation_turns_idempotency_key_unique").on(
-      t.idempotencyKey,
     ),
   }),
 );
