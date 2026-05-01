@@ -1,6 +1,6 @@
-import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { auditLog, notes, users } from "@/lib/db/schema";
+import { agentSessions, auditLog, notes, users } from "@/lib/db/schema";
 
 export interface TimelineEvent {
   id: number;
@@ -91,13 +91,50 @@ export interface ToolCallCount {
 }
 
 /**
- * Return per-tool call counts for mcp.tool.call events associated with a note.
- * Tool name is stored in resourceId; the note is identified via metadata->>'noteId'.
+ * Return per-tool call counts for all mcp.tool.call events made by the agent
+ * that owns this session note, since the session started.
+ *
+ * Looks up the session row for the note to get (userId, sessionStartedAt),
+ * then counts every mcp.tool.call by that user in the org from that point on.
+ * This correctly captures tools like search_notes / list_recent_notes that
+ * don't carry a noteId in their metadata.
  */
 export async function getNoteToolCallCounts(
   orgId: string,
   noteId: string,
 ): Promise<ToolCallCount[]> {
+  // Resolve the agent's userId and session start time via the note author + session row.
+  const [sessionRow] = await db
+    .select({
+      authorId: notes.authorId,
+      sessionCreatedAt: agentSessions.createdAt,
+    })
+    .from(agentSessions)
+    .innerJoin(notes, eq(notes.id, agentSessions.noteId))
+    .where(eq(agentSessions.noteId, noteId))
+    .limit(1);
+
+  // Fall back to note-scoped metadata query when there is no agent session row
+  // (e.g. the note isn't a session note, or the session was created before the
+  //  agent_sessions table existed).
+  if (!sessionRow) {
+    const rows = await db
+      .select({ toolName: auditLog.resourceId, callCount: count(auditLog.id) })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.orgId, orgId),
+          eq(auditLog.action, "mcp.tool.call"),
+          sql`${auditLog.metadata}->>'noteId' = ${noteId}`,
+        ),
+      )
+      .groupBy(auditLog.resourceId)
+      .orderBy(desc(count(auditLog.id)));
+    return rows
+      .filter((r): r is { toolName: string; callCount: number } => r.toolName !== null)
+      .map((r) => ({ toolName: r.toolName, callCount: r.callCount }));
+  }
+
   const rows = await db
     .select({
       toolName: auditLog.resourceId,
@@ -107,8 +144,9 @@ export async function getNoteToolCallCounts(
     .where(
       and(
         eq(auditLog.orgId, orgId),
+        eq(auditLog.userId, sessionRow.authorId),
         eq(auditLog.action, "mcp.tool.call"),
-        sql`${auditLog.metadata}->>'noteId' = ${noteId}`,
+        gte(auditLog.createdAt, sessionRow.sessionCreatedAt),
       ),
     )
     .groupBy(auditLog.resourceId)
