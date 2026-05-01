@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { NoteTabNav } from "./note-tab-nav";
 
 export default async function NoteDetailLayout({
   children,
@@ -11,32 +11,7 @@ export default async function NoteDetailLayout({
 
   return (
     <div className="space-y-4">
-      <nav className="flex gap-1 border-b pb-0">
-        <Link
-          href={`/orgs/${orgId}/notes/${noteId}`}
-          className="rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-        >
-          Note
-        </Link>
-        <Link
-          href={`/orgs/${orgId}/notes/${noteId}/summary`}
-          className="rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-        >
-          AI Summary
-        </Link>
-        <Link
-          href={`/orgs/${orgId}/notes/${noteId}/timeline`}
-          className="rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-        >
-          Timeline
-        </Link>
-        <Link
-          href={`/orgs/${orgId}/notes/${noteId}/dashboard`}
-          className="rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-        >
-          Dashboard
-        </Link>
-      </nav>
+      <NoteTabNav orgId={orgId} noteId={noteId} />
       <div>{children}</div>
     </div>
   );
