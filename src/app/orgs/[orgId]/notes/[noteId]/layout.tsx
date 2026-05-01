@@ -30,6 +30,12 @@ export default async function NoteDetailLayout({
         >
           Timeline
         </Link>
+        <Link
+          href={`/orgs/${orgId}/notes/${noteId}/dashboard`}
+          className="rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+        >
+          Dashboard
+        </Link>
       </nav>
       <div>{children}</div>
     </div>
