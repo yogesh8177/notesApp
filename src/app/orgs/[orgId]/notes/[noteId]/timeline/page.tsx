@@ -210,7 +210,17 @@ function EventDescription({ event }: { event: TimelineEvent }) {
     return (
       <span className="flex flex-wrap items-baseline gap-1.5">
         <span>Checkpoint{event2 ? <span className="text-muted-foreground"> — {event2}</span> : ""}</span>
-        {lastCommit && <span className="font-mono text-xs text-muted-foreground">{lastCommit.slice(0, 8)}</span>}
+        {lastCommit && (
+          <a
+            href={`https://github.com/yogesh8177/notesApp/commit/${lastCommit}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-xs text-muted-foreground hover:underline"
+            title={lastCommit}
+          >
+            {lastCommit.slice(0, 8)}
+          </a>
+        )}
         {tokenName && <span className="text-xs text-muted-foreground">via {tokenName}</span>}
       </span>
     );
