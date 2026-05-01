@@ -22,10 +22,13 @@ export function createMcpServer(principal: AgentPrincipal): McpServer {
         resources: { listChanged: false, subscribe: false },
       },
       instructions:
-        "Tools and resources operate on a single org's notes (the org bound " +
-        "to the MCP token). Use search_notes for content queries, " +
-        "list_recent_notes for recency views, get_note for full content. " +
-        "Resources are at notes://recent and notes://note/{noteId}.",
+        "Tools operate on a single org (bound to the MCP token). " +
+        "READS: search_notes (full-text), list_recent_notes (recency), get_note (full content), " +
+        "get_note_versions (history), list_tags (discover categories), " +
+        "list_agent_sessions (multi-agent coordination), get_org_timeline (situational awareness). " +
+        "WRITES: create_note, update_note (replace content), append_to_note (safe additive write). " +
+        "Prefer append_to_note over update_note for shared notes. " +
+        "Resources: notes://recent and notes://note/{noteId}.",
     },
   );
 

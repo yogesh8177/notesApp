@@ -1,13 +1,19 @@
 import { z } from "zod";
+import { count, eq } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   createNote,
   getNoteDetailForUser,
+  getNoteVersionsForUser,
   listNotesForUser,
   updateNote,
   NotesError,
 } from "@/lib/notes";
 import { searchNotes } from "@/lib/search";
+import { getOrgTimeline } from "@/lib/timeline/queries";
+import { listAgentSessions } from "@/lib/agent/queries";
+import { db } from "@/lib/db/client";
+import { tags, noteTags } from "@/lib/db/schema";
 import type { AgentPrincipal } from "@/lib/agent";
 import { withAudit } from "./audit";
 import { errorToolResult, textToolResult } from "./format";
@@ -311,6 +317,187 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
           } catch (err) {
             return handleNotesError(err);
           }
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
+  // append_to_note — add content to the end of an existing note safely.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "append_to_note",
+    {
+      title: "Append to a note",
+      description:
+        "Safely append content to an existing note without overwriting it. " +
+        "Reads the current content, appends a separator + new content, and writes a new version. " +
+        "Preferred over update_note for shared or concurrent writes.",
+      inputSchema: {
+        noteId: z.string().uuid(),
+        content: z.string().min(1).max(50_000).describe("Markdown content to append."),
+        changeSummary: z.string().trim().max(280).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    async ({ noteId, content, changeSummary }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "append_to_note",
+        meta: { noteId, appendLength: content.length },
+        run: async () => {
+          try {
+            const { note } = await getNoteDetailForUser(noteId, principal.userId);
+            const updated = await updateNote(
+              noteId,
+              {
+                content: note.content ? `${note.content}\n\n${content}` : content,
+                changeSummary: changeSummary ?? "append",
+              },
+              principal.userId,
+            );
+            return textToolResult({
+              id: updated.id,
+              title: updated.title,
+              currentVersion: updated.currentVersion,
+              updatedAt: updated.updatedAt,
+            });
+          } catch (err) {
+            return handleNotesError(err);
+          }
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
+  // get_note_versions — full version history with content snapshots.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "get_note_versions",
+    {
+      title: "Get note version history",
+      description:
+        "Returns all version snapshots for a note — content, changeSummary, and timestamp for each. " +
+        "Useful for tracking how a memory entry evolved over time.",
+      inputSchema: {
+        noteId: z.string().uuid(),
+      },
+    },
+    async ({ noteId }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "get_note_versions",
+        meta: { noteId },
+        run: async () => {
+          try {
+            const { versions } = await getNoteVersionsForUser(noteId, principal.userId);
+            return textToolResult({ noteId, count: versions.length, versions });
+          } catch (err) {
+            return handleNotesError(err);
+          }
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
+  // list_tags — all tags used in this org with note counts.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "list_tags",
+    {
+      title: "List org tags",
+      description:
+        "Returns all tags used in this org, each with the number of notes tagged. " +
+        "Use to discover available categories before filtering with search_notes or list_recent_notes.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(200).default(100),
+      },
+    },
+    async ({ limit }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "list_tags",
+        meta: { limit },
+        run: async () => {
+          const rows = await db
+            .select({
+              name: tags.name,
+              noteCount: count(noteTags.noteId),
+            })
+            .from(tags)
+            .leftJoin(noteTags, eq(noteTags.tagId, tags.id))
+            .where(eq(tags.orgId, principal.orgId))
+            .groupBy(tags.id, tags.name)
+            .orderBy(tags.name)
+            .limit(limit);
+          return textToolResult({ count: rows.length, tags: rows });
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
+  // list_agent_sessions — active/recent agent sessions in this org.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "list_agent_sessions",
+    {
+      title: "List agent sessions",
+      description:
+        "Returns recent agent sessions in this org — agentId, repo, branch, session note id, and last-seen timestamp. " +
+        "Useful for multi-agent coordination: see what other agents are working on, then use get_note to read their session note.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(50).default(20),
+      },
+    },
+    async ({ limit }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "list_agent_sessions",
+        meta: { limit },
+        run: async () => {
+          const sessions = await listAgentSessions(principal.orgId, limit);
+          return textToolResult({ count: sessions.length, sessions });
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
+  // get_org_timeline — recent audit events across the whole org.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "get_org_timeline",
+    {
+      title: "Get org timeline",
+      description:
+        "Returns recent audit events across the whole org — note edits, AI summaries, agent checkpoints, search queries, and more. " +
+        "Useful for situational awareness: 'what happened in this org recently?'",
+      inputSchema: {
+        limit: z.number().int().min(1).max(100).default(50),
+      },
+    },
+    async ({ limit }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "get_org_timeline",
+        meta: { limit },
+        run: async () => {
+          const events = await getOrgTimeline(principal.orgId, limit);
+          return textToolResult({
+            count: events.length,
+            events: events.map((e) => ({
+              id: e.id,
+              action: e.action,
+              noteId: e.noteId,
+              noteTitle: e.noteTitle,
+              actor: e.actor,
+              metadata: e.metadata,
+              createdAt: e.createdAt,
+            })),
+          });
         },
       }),
   );
