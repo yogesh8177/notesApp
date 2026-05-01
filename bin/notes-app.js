@@ -77,7 +77,7 @@ async function setup() {
 
   rl.close();
   fs.writeFileSync(ENV_FILE, out.join("\n") + "\n");
-  console.log("\n.env written. Run: npx notes-app migrate\n");
+  console.log("\n.env written.\n\nNext steps:\n  npx notes-app hooks-setup   Wire Claude Code hooks + MCP\n  npx notes-app migrate        Apply DB migrations\n");
 }
 
 // ---------------------------------------------------------------------------
