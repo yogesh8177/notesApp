@@ -25,12 +25,7 @@ function shortAgentId(agentId: string | null): string {
   return parts.at(-1) ?? agentId;
 }
 
-/**
- * Build SVG polyline `points` for a 40×24 sparkline.
- * The line rises from bottom-left to top-right, scaled by
- * checkpointCount / totalVersions.
- */
-export function buildSparklinePoints(
+function buildSparklinePoints(
   checkpointCount: number,
   totalVersions: number,
 ): string {
@@ -38,8 +33,6 @@ export function buildSparklinePoints(
   const H = 24;
   if (totalVersions === 0) return `0,${H} ${W},${H}`;
   const ratio = Math.min(1, checkpointCount / totalVersions);
-  // Start at bottom-left, end at top-right scaled by ratio.
-  // y decreases as ratio increases (SVG y=0 is top).
   const endY = H - Math.round(ratio * H);
   return `0,${H} ${W},${endY}`;
 }
