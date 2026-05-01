@@ -122,7 +122,7 @@ async function loadTailTurns(noteId: string): Promise<TailTurnEntry[]> {
       ),
     )
     .orderBy(conversationTurns.turnIndex)
-    .limit(20);
+    .limit(5);
 
   return rows;
 }
