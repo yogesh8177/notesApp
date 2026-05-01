@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { and, desc, eq, ilike, isNull } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { notes, users } from "@/lib/db/schema";
+import { noteVersions, notes, users } from "@/lib/db/schema";
 import { parseCheckpoint } from "../notes/[noteId]/dashboard/page";
+import { HealthBadge } from "../notes/[noteId]/dashboard/health-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 function formatRelativeTime(date: Date): string {
@@ -22,6 +23,25 @@ function shortAgentId(agentId: string | null): string {
   if (!agentId) return "—";
   const parts = agentId.split("-");
   return parts.at(-1) ?? agentId;
+}
+
+/**
+ * Build SVG polyline `points` for a 40×24 sparkline.
+ * The line rises from bottom-left to top-right, scaled by
+ * checkpointCount / totalVersions.
+ */
+export function buildSparklinePoints(
+  checkpointCount: number,
+  totalVersions: number,
+): string {
+  const W = 40;
+  const H = 24;
+  if (totalVersions === 0) return `0,${H} ${W},${H}`;
+  const ratio = Math.min(1, checkpointCount / totalVersions);
+  // Start at bottom-left, end at top-right scaled by ratio.
+  // y decreases as ratio increases (SVG y=0 is top).
+  const endY = H - Math.round(ratio * H);
+  return `0,${H} ${W},${endY}`;
 }
 
 export default async function AgentSessionsPage({
@@ -53,10 +73,69 @@ export default async function AgentSessionsPage({
     .orderBy(desc(notes.updatedAt))
     .limit(50);
 
+  const noteIds = rows.map((r) => r.id);
+
+  // Fetch last 10 versions per session note to compute sparkline data
+  const versionRows =
+    noteIds.length > 0
+      ? await db
+          .select({
+            noteId: noteVersions.noteId,
+            changeSummary: noteVersions.changeSummary,
+          })
+          .from(noteVersions)
+          .where(inArray(noteVersions.noteId, noteIds))
+          .orderBy(desc(noteVersions.version))
+      : [];
+
+  // Group versions by noteId and keep only last 10
+  const versionsByNote = new Map<string, typeof versionRows>();
+  for (const v of versionRows) {
+    const list = versionsByNote.get(v.noteId) ?? [];
+    if (list.length < 10) {
+      list.push(v);
+      versionsByNote.set(v.noteId, list);
+    }
+  }
+
   const sessions = rows.map((row) => {
     const checkpoint = parseCheckpoint(row.content);
-    return { ...row, checkpoint };
+    const versions = versionsByNote.get(row.id) ?? [];
+    const checkpointCount = versions.filter(
+      (v) =>
+        v.changeSummary?.includes("commit @") ||
+        v.changeSummary?.includes("stop @"),
+    ).length;
+    const sparklinePoints = buildSparklinePoints(checkpointCount, versions.length);
+    return { ...row, checkpoint, checkpointCount, totalVersions: versions.length, sparklinePoints };
   });
+
+  // ---------------------------------------------------------------------------
+  // Weekly done aggregation — last 7 days, all sessions
+  // ---------------------------------------------------------------------------
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentSessions = sessions.filter((s) => s.updatedAt > sevenDaysAgo);
+
+  interface WeeklyEntry {
+    title: string;
+    items: string[];
+  }
+  const weeklyDone: WeeklyEntry[] = [];
+  const globalSeen = new Set<string>();
+
+  for (const session of recentSessions) {
+    if (!session.checkpoint?.done || session.checkpoint.done.length === 0) continue;
+    const deduped: string[] = [];
+    for (const item of session.checkpoint.done) {
+      if (!globalSeen.has(item)) {
+        globalSeen.add(item);
+        deduped.push(item);
+      }
+    }
+    if (deduped.length > 0) {
+      weeklyDone.push({ title: session.title, items: deduped });
+    }
+  }
 
   if (sessions.length === 0) {
     return (
@@ -94,10 +173,12 @@ export default async function AgentSessionsPage({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
+              <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Session</th>
               <th className="px-4 py-3">Branch</th>
               <th className="px-4 py-3">Agent</th>
               <th className="px-4 py-3 text-center">Done</th>
+              <th className="px-4 py-3">Growth</th>
               <th className="px-4 py-3">Last Commit</th>
               <th className="px-4 py-3">Updated</th>
             </tr>
@@ -107,6 +188,12 @@ export default async function AgentSessionsPage({
               const cp = session.checkpoint;
               return (
                 <tr key={session.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <HealthBadge
+                      lastUpdated={session.updatedAt}
+                      issueCount={cp?.issues?.length ?? 0}
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <Link
                       href={`/orgs/${orgId}/notes/${session.id}/dashboard`}
@@ -135,6 +222,28 @@ export default async function AgentSessionsPage({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    <svg
+                      viewBox="0 0 40 24"
+                      width={40}
+                      height={24}
+                      aria-label={`${session.checkpointCount} checkpoint${session.checkpointCount !== 1 ? "s" : ""} of ${session.totalVersions} versions`}
+                      className="block"
+                    >
+                      <title>
+                        {session.checkpointCount} checkpoint{session.checkpointCount !== 1 ? "s" : ""} out of {session.totalVersions} versions
+                      </title>
+                      <polyline
+                        points={session.sparklinePoints}
+                        fill="none"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={1.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={0.8}
+                      />
+                    </svg>
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                     {cp?.lastCommit ? cp.lastCommit.slice(0, 8) : "—"}
                   </td>
@@ -154,6 +263,35 @@ export default async function AgentSessionsPage({
         Showing up to 50 most recently updated sessions. Click a session title to view its full
         agent dashboard.
       </p>
+
+      {/* Weekly done aggregation */}
+      {weeklyDone.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">This week&apos;s work</CardTitle>
+            <CardDescription>
+              Deduplicated done items from sessions updated in the last 7 days.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {weeklyDone.map((entry) => (
+              <div key={entry.title}>
+                <p className="mb-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">
+                  {entry.title}
+                </p>
+                <ul className="space-y-1">
+                  {entry.items.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="mt-0.5 text-emerald-600 shrink-0">&#10003;</span>
+                      <span className="font-mono text-xs leading-5">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

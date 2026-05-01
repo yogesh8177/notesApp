@@ -3,6 +3,8 @@ import { getNoteDetailForUser } from "@/lib/notes";
 import { SectionCard, formatTimestamp } from "../../components";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ToolUsageChart from "./tool-usage-chart";
+import { ActivityChart } from "./activity-chart";
+import { HealthBadge } from "./health-badge";
 
 // ---------------------------------------------------------------------------
 // Checkpoint parser
@@ -148,7 +150,13 @@ export default async function NoteAgentDashboardPage({
             </>
           )}
           <dt className="font-medium text-muted-foreground">Last Updated</dt>
-          <dd className="col-span-1 sm:col-span-2">{formatTimestamp(note.updatedAt)}</dd>
+          <dd className="col-span-1 sm:col-span-2 flex items-center gap-3">
+            <span>{formatTimestamp(note.updatedAt)}</span>
+            <HealthBadge
+              lastUpdated={note.updatedAt}
+              issueCount={checkpoint.issues.length}
+            />
+          </dd>
         </dl>
         {checkpoint.summary && (
           <p className="mt-3 text-sm text-muted-foreground border-t pt-3">{checkpoint.summary}</p>
@@ -211,6 +219,11 @@ export default async function NoteAgentDashboardPage({
           title="Checkpoint History"
           description={`Last ${recentHistory.length} version${recentHistory.length !== 1 ? "s" : ""} of this session note`}
         >
+          {/* Activity chart — shows checkpoint frequency over time */}
+          <div className="mb-4 rounded-md border bg-muted/20 p-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Checkpoint activity</p>
+            <ActivityChart history={recentHistory} />
+          </div>
           <ol className="space-y-2">
             {recentHistory.map((v) => (
               <li
