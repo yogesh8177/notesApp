@@ -39,6 +39,9 @@ export default async function OrgLayout({
             <Link href={`/orgs/${orgId}/timeline`} className="hover:underline">
               Timeline
             </Link>
+            <Link href={`/orgs/${orgId}/agent-sessions`} className="hover:underline">
+              Agent Sessions
+            </Link>
             <Link href={`/orgs/${orgId}/settings`} className="hover:underline">
               Settings
             </Link>
