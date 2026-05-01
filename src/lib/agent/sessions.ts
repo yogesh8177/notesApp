@@ -16,10 +16,17 @@ const EPOCH_SIZE = 10;
 
 const GUIDELINES_TITLE = "Agent Guidelines";
 
+export interface EpochSummaryEntry {
+  epochStart: number;
+  epochEnd: number;
+  content: string;
+}
+
 export interface BootstrapResult {
   sessionNoteId: string;
   guidelines: string;
   latestCheckpoint: string;
+  epochSummaries: EpochSummaryEntry[];
 }
 
 export interface CheckpointResult {
@@ -44,6 +51,20 @@ async function loadGuidelines(orgId: string): Promise<string> {
     )
     .limit(1);
   return row?.content ?? "";
+}
+
+async function loadEpochSummaries(noteId: string): Promise<EpochSummaryEntry[]> {
+  const rows = await db
+    .select({
+      epochStart: sessionEpochSummaries.epochStart,
+      epochEnd: sessionEpochSummaries.epochEnd,
+      content: sessionEpochSummaries.content,
+    })
+    .from(sessionEpochSummaries)
+    .where(eq(sessionEpochSummaries.noteId, noteId))
+    .orderBy(sessionEpochSummaries.epochEnd)
+    .limit(5);
+  return rows;
 }
 
 async function loadLatestCheckpoint(noteId: string): Promise<string> {
@@ -152,12 +173,13 @@ export async function bootstrap(
   // per-session state, so they always come back.
   const skipCheckpoint = input.source === "clear";
 
-  const [guidelines, latestCheckpoint] = await Promise.all([
+  const [guidelines, latestCheckpoint, epochSummaries] = await Promise.all([
     loadGuidelines(orgId),
     skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
+    skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
   ]);
 
-  return { sessionNoteId: noteId, guidelines, latestCheckpoint };
+  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries };
 }
 
 function renderCheckpoint(input: CheckpointInput): string {

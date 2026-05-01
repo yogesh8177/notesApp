@@ -20,13 +20,21 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
     saveSession(sessionId, { sessionNoteId: payload.sessionNoteId, ...ctx });
     saveCurrentSession(sessionId);
 
+    const epochs = Array.isArray(payload.epochSummaries) ? payload.epochSummaries : [];
+    const epochBlock = epochs.length > 0
+      ? "PRIOR EPOCHS (compacted history, oldest first):\n" +
+        epochs.map((e) => `## Epoch v${e.epochStart}–v${e.epochEnd}\n${e.content}`).join("\n\n---\n\n") +
+        "\n"
+      : null;
+
     const text = [
       "ORG GUIDELINES:",
       payload.guidelines || "(none)",
       "",
+      epochBlock,
       "RESUME CHECKPOINT:",
       payload.latestCheckpoint || "(no prior checkpoint)",
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 
     process.stdout.write(
       JSON.stringify({
