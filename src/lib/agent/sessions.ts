@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentSessions,
+  conversationSummaries,
   noteVersions,
   notes,
   sessionEpochSummaries,
@@ -22,11 +23,18 @@ export interface EpochSummaryEntry {
   content: string;
 }
 
+export interface ConversationSummaryEntry {
+  turnStart: number;
+  turnEnd: number;
+  content: string;
+}
+
 export interface BootstrapResult {
   sessionNoteId: string;
   guidelines: string;
   latestCheckpoint: string;
   epochSummaries: EpochSummaryEntry[];
+  recentConversation: ConversationSummaryEntry[];
 }
 
 export interface CheckpointResult {
@@ -63,6 +71,20 @@ async function loadEpochSummaries(noteId: string): Promise<EpochSummaryEntry[]> 
     .from(sessionEpochSummaries)
     .where(eq(sessionEpochSummaries.noteId, noteId))
     .orderBy(sessionEpochSummaries.epochEnd)
+    .limit(5);
+  return rows;
+}
+
+async function loadConversationSummaries(noteId: string): Promise<ConversationSummaryEntry[]> {
+  const rows = await db
+    .select({
+      turnStart: conversationSummaries.turnStart,
+      turnEnd: conversationSummaries.turnEnd,
+      content: conversationSummaries.content,
+    })
+    .from(conversationSummaries)
+    .where(eq(conversationSummaries.sessionNoteId, noteId))
+    .orderBy(conversationSummaries.turnEnd)
     .limit(5);
   return rows;
 }
@@ -173,13 +195,14 @@ export async function bootstrap(
   // per-session state, so they always come back.
   const skipCheckpoint = input.source === "clear";
 
-  const [guidelines, latestCheckpoint, epochSummaries] = await Promise.all([
+  const [guidelines, latestCheckpoint, epochSummaries, recentConversation] = await Promise.all([
     loadGuidelines(orgId),
     skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
     skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
+    skipCheckpoint ? Promise.resolve([]) : loadConversationSummaries(noteId),
   ]);
 
-  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries };
+  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries, recentConversation };
 }
 
 function renderCheckpoint(input: CheckpointInput): string {
