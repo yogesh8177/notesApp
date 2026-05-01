@@ -12,6 +12,11 @@
         "hooks": [
           { "type": "command", "command": "node .claude/hooks/recall.js" }
         ]
+      },
+      {
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/prompt.js" }
+        ]
       }
     ],
     "PostToolUse": [

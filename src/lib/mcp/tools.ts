@@ -465,6 +465,86 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
   );
 
   // -------------------------------------------------------------------------
+  // log_turn — log a summary of this assistant response as a conversation turn.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "log_turn",
+    {
+      title: "Log assistant turn summary",
+      description:
+        "Log a summary of this assistant response as a conversation turn. " +
+        "Call at the end of each significant response. Include what you did and which notes were created or updated. " +
+        "sessionNoteId is available in your bootstrap context.",
+      inputSchema: {
+        sessionNoteId: z.string().uuid().describe("The session note ID from your bootstrap context."),
+        summary: z.string().min(1).max(5_000),
+        noteRefs: z
+          .array(
+            z.object({
+              noteId: z.string().uuid(),
+              version: z.number().int().optional(),
+              title: z.string().max(200).optional(),
+            }),
+          )
+          .max(20)
+          .default([]),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    async ({ sessionNoteId, summary, noteRefs }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "log_turn",
+        meta: { sessionNoteId, summaryLength: summary.length, noteRefCount: noteRefs.length },
+        run: async () => {
+          try {
+            const { addTurn } = await import("@/lib/agent/conversation");
+            const result = await addTurn({
+              orgId: principal.orgId,
+              sessionNoteId,
+              role: "assistant",
+              content: summary,
+              noteRefs,
+            });
+            return textToolResult({ turnIndex: result.turnIndex });
+          } catch (err) {
+            return errorToolResult(err instanceof Error ? err.message : "Failed to log turn");
+          }
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
+  // get_conversation — retrieve conversation turns and auto-summaries.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    "get_conversation",
+    {
+      title: "Get conversation history",
+      description:
+        "Retrieve conversation turns and auto-summaries for a session note. " +
+        "Shows the log of user prompts and assistant summaries with note refs.",
+      inputSchema: {
+        sessionNoteId: z.string().uuid(),
+        limit: z.number().int().min(1).max(200).default(50),
+      },
+    },
+    async ({ sessionNoteId, limit }) =>
+      withAudit({
+        principal,
+        kind: "tool",
+        name: "get_conversation",
+        meta: { sessionNoteId, limit },
+        run: async () => {
+          const { getConversation } = await import("@/lib/agent/conversation");
+          const data = await getConversation(sessionNoteId, limit);
+          return textToolResult(data);
+        },
+      }),
+  );
+
+  // -------------------------------------------------------------------------
   // get_org_timeline — recent audit events across the whole org.
   // -------------------------------------------------------------------------
   server.registerTool(

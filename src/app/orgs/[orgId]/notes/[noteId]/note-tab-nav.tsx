@@ -21,6 +21,7 @@ export function NoteTabNav({ orgId, noteId }: { orgId: string; noteId: string })
     { label: "AI Summary", href: `/orgs/${orgId}/notes/${noteId}/summary`, exact: false },
     { label: "Timeline", href: `/orgs/${orgId}/notes/${noteId}/timeline`, exact: false },
     { label: "Dashboard", href: `/orgs/${orgId}/notes/${noteId}/dashboard`, exact: false },
+    { label: "Conversation", href: `/orgs/${orgId}/notes/${noteId}/conversation`, exact: false },
   ];
 
   return (

@@ -1127,3 +1127,17 @@ into `session_epoch_summaries` (new table, migration 0007). Dashboard shows epoc
 collapsed violet cards beneath the raw checkpoint list.
 
 No schema change to frozen tables — new `session_epoch_summaries` is additive agent-module-only.
+
+## 2026-05-02 — conversation turn capture
+
+User prompts are captured automatically via the `UserPromptSubmit` hook (new `prompt.js`).
+Assistant turns are logged explicitly via the `log_turn` MCP tool (Claude calls this at end of each response).
+Full response text is not capturable via hooks — assistant turns are summaries only.
+
+After every 10 turns, `maybeCompactConversation()` fires async and synthesizes the window
+into a `conversation_summaries` row (same claude-haiku pattern as epoch compaction).
+
+Schema: `conversation_turns` + `conversation_summaries` (migration 0008).
+New "Conversation" tab on note detail page shows turns chronologically with note-version
+badges linking to History. Auto-summary cards appear inline after every 10th turn.
+New MCP tools: `log_turn`, `get_conversation`.
