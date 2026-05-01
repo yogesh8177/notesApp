@@ -16,6 +16,7 @@ export interface CheckpointData {
   branch: string | null;
   agent: string | null;
   lastCommit: string | null;
+  repoUrl: string | null;
   summary: string | null;
   done: string[];
   next: string[];
@@ -50,6 +51,7 @@ export function parseCheckpoint(content: string): CheckpointData | null {
 
   const agent = extractInline("Agent");
   const lastCommit = extractInline("Last commit");
+  const repoUrl = extractInline("Repo URL");
 
   // Extract a section's bullet list items (lines starting with "- ")
   function extractSection(header: string): string[] {
@@ -80,6 +82,7 @@ export function parseCheckpoint(content: string): CheckpointData | null {
     branch,
     agent,
     lastCommit,
+    repoUrl,
     summary: extractSummaryText(),
     done: extractSection("Done"),
     next: extractSection("Next"),
@@ -149,15 +152,19 @@ export default async function NoteAgentDashboardPage({
             <>
               <dt className="font-medium text-muted-foreground">Last Commit</dt>
               <dd className="col-span-1 font-mono sm:col-span-2">
-                <a
-                  href={`https://github.com/yogesh8177/notesApp/commit/${checkpoint.lastCommit}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:underline"
-                  title={checkpoint.lastCommit}
-                >
-                  {checkpoint.lastCommit.slice(0, 8)}
-                </a>
+                {checkpoint.repoUrl ? (
+                  <a
+                    href={`${checkpoint.repoUrl}/commit/${checkpoint.lastCommit}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                    title={checkpoint.lastCommit}
+                  >
+                    {checkpoint.lastCommit.slice(0, 8)}
+                  </a>
+                ) : (
+                  <span title={checkpoint.lastCommit}>{checkpoint.lastCommit.slice(0, 8)}</span>
+                )}
               </dd>
             </>
           )}

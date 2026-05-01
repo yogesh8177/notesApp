@@ -206,20 +206,27 @@ function EventDescription({ event }: { event: TimelineEvent }) {
   if (action === "agent.session.checkpoint") {
     const event2 = typeof meta.event === "string" ? meta.event : null;
     const lastCommit = typeof meta.lastCommit === "string" ? meta.lastCommit : null;
+    const repoUrl = typeof meta.repoUrl === "string" ? meta.repoUrl : null;
     const tokenName = typeof meta.tokenName === "string" ? meta.tokenName : null;
     return (
       <span className="flex flex-wrap items-baseline gap-1.5">
         <span>Checkpoint{event2 ? <span className="text-muted-foreground"> — {event2}</span> : ""}</span>
         {lastCommit && (
-          <a
-            href={`https://github.com/yogesh8177/notesApp/commit/${lastCommit}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono text-xs text-muted-foreground hover:underline"
-            title={lastCommit}
-          >
-            {lastCommit.slice(0, 8)}
-          </a>
+          repoUrl ? (
+            <a
+              href={`${repoUrl}/commit/${lastCommit}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs text-muted-foreground hover:underline"
+              title={lastCommit}
+            >
+              {lastCommit.slice(0, 8)}
+            </a>
+          ) : (
+            <span className="font-mono text-xs text-muted-foreground" title={lastCommit}>
+              {lastCommit.slice(0, 8)}
+            </span>
+          )
         )}
         {tokenName && <span className="text-xs text-muted-foreground">via {tokenName}</span>}
       </span>

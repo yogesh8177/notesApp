@@ -389,3 +389,8 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **What:** `if: "Bash(git commit *)"` in settings.json does not filter hook execution — hook fires for every Bash tool call. `classify()` returned "commit" for all PostToolUse events unconditionally.
 **Why bad:** Every Bash call (file reads, tsc, git push, etc.) wrote a spurious checkpoint with empty done/wrong SHA, bloating session note history.
 **Fix:** In the `"commit"` branch, parse tool_response first — if no git commit line is found, return early before writing any checkpoint.
+
+## hardcoded GitHub URL in commit links
+- **Where:** `timeline/page.tsx` (agent.session.checkpoint block), `dashboard/page.tsx` (Last Commit dd)
+- **Why bad:** Links broke for any repo other than `yogesh8177/notesApp`; would silently point to wrong repo if app tracked multiple projects
+- **Fix:** `repoUrl` threaded from `_lib.js detectContext()` through checkpoint/bootstrap hooks, schemas, audit metadata, and rendered markdown — UI reads dynamic value with plain-text fallback

@@ -1106,3 +1106,11 @@ Fixed two races in the hooks layer that caused dropped items under parallel work
 2. **`<sessionId>.json` dirty write** — concurrent `log.js done` or checkpoint hook processes both read-modify-write the accumulated arrays without synchronization; second write overwrites the first's item. Fix: `withLock(name, fn)` added to `_lib.js` — O_EXCL lockfile, stale-lock cleanup for crashed processes; wraps every session read-modify-write in `log.js` and `checkpoint.js`.
 
 Verified: 20-worker stress test → 0 items dropped. Integration test: 2 parallel worktrees (`test/lock-a`, `test/lock-b`), 3 commits each, all 6 + 2 merge commits accumulated correctly in the main session note.
+
+## 2026-05-01 — per-event repoUrl for dynamic commit links
+
+Previously commit SHAs in timeline and dashboard were hardcoded to `github.com/yogesh8177/notesApp`.
+Now `_lib.js` normalizes the git remote to HTTPS (`repoUrl`) and threads it through:
+hook payload → schemas → audit metadata → rendered checkpoint markdown → UI.
+Both timeline and dashboard use `meta.repoUrl` / `checkpoint.repoUrl` for links, with graceful
+fallback to plain text when the field is absent (old events).
