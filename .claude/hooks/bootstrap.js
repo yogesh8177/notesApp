@@ -12,6 +12,7 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
       repo: ctx.repo,
       branch: ctx.branch,
       agentId: ctx.agentId,
+      repoUrl: ctx.repoUrl,
       source,
     });
 

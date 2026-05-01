@@ -9,6 +9,7 @@ export const bootstrapSchema = z.object({
   agentId: identifier,
   /** SessionStart matcher value: startup | resume | clear | compact */
   source: z.enum(["startup", "resume", "clear", "compact"]).optional(),
+  repoUrl: z.string().url().max(500).optional(),
 });
 export type BootstrapInput = z.infer<typeof bootstrapSchema>;
 
@@ -24,6 +25,7 @@ export const checkpointSchema = z.object({
   next: z.array(z.string().trim().min(1).max(500)).max(50).default([]),
   issues: z.array(z.string().trim().min(1).max(500)).max(50).default([]),
   decisions: z.array(z.string().trim().min(1).max(500)).max(50).default([]),
+  repoUrl: z.string().url().max(500).optional(),
 });
 export type CheckpointInput = z.infer<typeof checkpointSchema>;
 

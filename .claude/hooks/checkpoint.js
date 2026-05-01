@@ -111,6 +111,7 @@ function parseCommitOutput(output) {
       branch: ctx.branch,
       agentId: ctx.agentId,
       lastCommit: ctx.lastCommit,
+      repoUrl: ctx.repoUrl,
       body,
       done,
       next: [],

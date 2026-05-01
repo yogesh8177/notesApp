@@ -72,6 +72,17 @@ function git(cmd, cwd) {
   }
 }
 
+function normalizeRepoUrl(remote) {
+  if (!remote) return null;
+  // SSH: git@github.com:user/repo.git → https://github.com/user/repo
+  const sshMatch = remote.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+  if (sshMatch) return `https://${sshMatch[1]}/${sshMatch[2]}`;
+  // HTTPS: https://github.com/user/repo.git → https://github.com/user/repo
+  const httpsMatch = remote.match(/^(https?:\/\/[^/]+\/.+?)(?:\.git)?$/);
+  if (httpsMatch) return httpsMatch[1];
+  return null;
+}
+
 function detectContext(cwd) {
   const remote = git("config --get remote.origin.url", cwd);
   const repo =
@@ -81,7 +92,8 @@ function detectContext(cwd) {
   const lastCommit = git("rev-parse HEAD", cwd) || "";
   const agentId =
     process.env.AGENT_ID || `claude-code-${os.hostname()}-${os.userInfo().username}`;
-  return { repo, branch, lastCommit, agentId };
+  const repoUrl = normalizeRepoUrl(remote);
+  return { repo, branch, lastCommit, agentId, repoUrl };
 }
 
 function readStdin() {
