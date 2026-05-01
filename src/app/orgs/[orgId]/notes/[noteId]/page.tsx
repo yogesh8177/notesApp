@@ -8,6 +8,7 @@ import { deleteNoteAction, removeShareAction, updateNoteAction, upsertShareActio
 import { EmptyState, FlashNotice, SectionCard, VisibilityBadge, formatTimestamp } from "../components";
 import { SubmitButton } from "../_components/submit-button";
 import { NoteFileUploader } from "@/app/orgs/[orgId]/files/_components/note-file-uploader";
+import { MarkdownContent } from "@/components/markdown-content";
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -114,7 +115,7 @@ export default async function NoteDetailPage({
           </form>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg border bg-muted/20 p-4 whitespace-pre-wrap text-sm">{note.content || "No content."}</div>
+            <div className="rounded-lg border bg-muted/20 p-4"><MarkdownContent content={note.content} /></div>
             <div className="flex flex-wrap gap-2">
               {note.tags.length === 0 ? <span className="text-sm text-muted-foreground">No tags.</span> : null}
               {note.tags.map((tag) => (
@@ -130,7 +131,7 @@ export default async function NoteDetailPage({
       {note.permissions.canWrite ? (
         <SectionCard title="Current content" description="Rendered from the current saved version.">
           <div className="space-y-4">
-            <div className="rounded-lg border bg-muted/20 p-4 whitespace-pre-wrap text-sm">{note.content || "No content."}</div>
+            <div className="rounded-lg border bg-muted/20 p-4"><MarkdownContent content={note.content} /></div>
             <div className="flex flex-wrap gap-2">
               {note.tags.length === 0 ? <span className="text-sm text-muted-foreground">No tags.</span> : null}
               {note.tags.map((tag) => (
