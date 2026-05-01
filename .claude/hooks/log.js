@@ -12,7 +12,7 @@
  *
  * The entry surfaces in the next checkpoint (commit, stop, or compact).
  */
-const { loadCurrentSession, loadSession, saveSession } = require("./_lib");
+const { withLock, loadCurrentSession, loadSession, saveSession } = require("./_lib");
 
 const [, , type, ...rest] = process.argv;
 const text = rest.join(" ").trim();
@@ -35,7 +35,12 @@ if (!session?.sessionNoteId) {
 }
 
 const key = type === "done" ? "accumulatedDone" : type === "decision" ? "accumulatedDecisions" : "accumulatedIssues";
-const accumulated = [...new Set([...(session[key] ?? []), text])];
-saveSession(current.sessionId, { ...session, [key]: accumulated });
+
+withLock(current.sessionId, () => {
+  // Re-read under lock so concurrent callers don't lose each other's items.
+  const fresh = loadSession(current.sessionId) ?? session;
+  const accumulated = [...new Set([...(fresh[key] ?? []), text])];
+  saveSession(current.sessionId, { ...fresh, [key]: accumulated });
+});
 
 process.stdout.write(`[log] ${type} logged: ${text}\n`);

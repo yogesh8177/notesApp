@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { execSync } = require("child_process");
-const { detectContext, readStdin, loadSession, saveSession, api } = require("./_lib");
+const { withLock, detectContext, readStdin, loadSession, saveSession, api } = require("./_lib");
 
 function gitInDir(cmd, cwd) {
   try {
@@ -86,11 +86,14 @@ function parseCommitOutput(output) {
 
     body = gitInDir("log -1 --pretty=%b", worktreeCwd);
 
-    // Accumulate done/decisions/issues in session state so stop/compact can carry them forward.
-    const accumulated = [...new Set([...(session.accumulatedDone ?? []), parsed.subject])];
-    saveSession(sessionId, { ...session, accumulatedDone: accumulated });
-    // Use the full accumulated list so mid-session checkpoints also show all done items.
-    done = accumulated;
+    // Accumulate under lock — concurrent hook processes on the same session
+    // would otherwise race on the JSON read-modify-write and drop items.
+    done = withLock(sessionId, () => {
+      const fresh = loadSession(sessionId) ?? session;
+      const accumulated = [...new Set([...(fresh.accumulatedDone ?? []), parsed.subject])];
+      saveSession(sessionId, { ...fresh, accumulatedDone: accumulated });
+      return accumulated;
+    });
   } else {
     ctx = detectContext();
     // Drain accumulated items from session state.
