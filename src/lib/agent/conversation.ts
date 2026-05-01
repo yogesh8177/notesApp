@@ -51,11 +51,17 @@ export async function addTurn(opts: {
     .values({
       orgId: opts.orgId,
       sessionNoteId: opts.sessionNoteId,
-      // turnIndex = (SELECT COALESCE(MAX(turn_index), -1) + 1 FROM conversation_turns WHERE session_note_id = ?)
       turnIndex: sql`(SELECT COALESCE(MAX(turn_index), -1) + 1 FROM conversation_turns WHERE session_note_id = ${opts.sessionNoteId})`,
       role: opts.role,
       content: opts.content,
       noteRefs: opts.noteRefs ?? [],
+    })
+    .onConflictDoUpdate({
+      target: [conversationTurns.sessionNoteId, conversationTurns.turnIndex],
+      set: {
+        content: sql`excluded.content`,
+        noteRefs: sql`excluded.note_refs`,
+      },
     })
     .returning({ turnIndex: conversationTurns.turnIndex });
 
