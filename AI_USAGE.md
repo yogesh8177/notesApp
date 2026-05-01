@@ -392,3 +392,26 @@ Worse, in this codebase the `AuditAction` type already had `permission.denied` d
 **What was right:** Identifying that the `and`/`or`/`sql` pattern from drizzle handles the mixed WHERE condition (indexed resource row OR jsonb metadata match) cleanly in one query rather than two.
 
 **What was wrong:** Nothing significant. The `isSameDay` / date formatting helpers are duplicated between the org and per-note page — could be extracted to a shared util, but left as-is per the no-premature-abstraction rule.
+
+## 2026-05-02 — Agent memory layer + conversation capture (orchestrator)
+
+**What was built:**
+- Markdown rendering for note content (`react-markdown` + `@tailwindcss/typography`)
+- 7 new MCP tools: `append_to_note`, `get_note_versions`, `list_tags`, `list_agent_sessions`, `get_org_timeline`, `log_turn`, `get_conversation`
+- Conversation turn capture: `prompt.js` hook (UserPromptSubmit) captures user prompts; `log_turn` MCP tool captures assistant summaries; auto-compaction every 10 turns via `maybeCompactConversation()`
+- Conversation tab on note detail page with chronological turns + inline summary cards
+- Bootstrap resume context: tail turns (last 5) injected alongside guidelines, epochs, checkpoint
+- Epoch summaries injected at bootstrap for long-run note version history
+- Migration tracking table `_migrations` to fix re-run crashes
+- `npx notes-app` CLI (`bin/notes-app.js`) with setup/migrate/seed/dev/start commands
+- Upsert fix for duplicate `log_turn` calls (onConflictDoUpdate)
+
+**Design decisions:**
+- Conversation summaries kept in DB/UI only — not injected at bootstrap (checkpoint is the load-bearing resume signal)
+- Tail turns capped at 5 (bounded token cost, orientation value)
+- Conversation summaries gated behind `source=resume` then removed entirely from bootstrap
+- Fire-and-forget compaction via `void` (safe on Railway persistent Node.js)
+
+**What was right:** Iterative refinement — added conversation context to bootstrap, then reasoned it out and trimmed to just tail turns, then confirmed checkpoint is sufficient primary signal.
+
+**What was wrong:** Initially set tail turns limit at 20 (too high), conversation summaries added then removed from bootstrap after reasoning through what agents actually need vs what's human observability.
