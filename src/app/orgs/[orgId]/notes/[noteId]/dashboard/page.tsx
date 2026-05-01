@@ -4,6 +4,7 @@ import { SectionCard, formatTimestamp } from "../../components";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ToolUsageChart from "./tool-usage-chart";
 import { ActivityChart } from "./activity-chart";
+import { buildActivityBars } from "./build-activity-bars";
 import { HealthBadge } from "./health-badge";
 
 // ---------------------------------------------------------------------------
@@ -119,6 +120,7 @@ export default async function NoteAgentDashboardPage({
   }
 
   const recentHistory = note.history.slice(0, 10);
+  const activityBars = buildActivityBars(recentHistory);
 
   return (
     <div className="space-y-4">
@@ -222,7 +224,7 @@ export default async function NoteAgentDashboardPage({
           {/* Activity chart — shows checkpoint frequency over time */}
           <div className="mb-4 rounded-md border bg-muted/20 p-3">
             <p className="mb-2 text-xs font-medium text-muted-foreground">Checkpoint activity</p>
-            <ActivityChart history={recentHistory} />
+            <ActivityChart bars={activityBars} />
           </div>
           <ol className="space-y-2">
             {recentHistory.map((v) => (
