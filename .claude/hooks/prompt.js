@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * UserPromptSubmit hook — captures user prompts as conversation turns.
- * Fires before Claude reads the user's message. Silently logs the prompt
- * to the conversation_turns table via the agent API.
+ * Uses a deterministic idempotency key so hook retries don't insert duplicates.
  */
+const { createHash } = require("crypto");
 const { readStdin, loadSession, api } = require("./_lib");
 
 const MIN_LEN = 4;
@@ -19,10 +19,18 @@ const MIN_LEN = 4;
   const session = loadSession(sessionId);
   if (!session?.sessionNoteId) return;
 
+  // Stable key: same prompt content in the same session always hashes identically,
+  // so a hook retry is silently deduplicated by the server.
+  const idempotencyKey = createHash("sha256")
+    .update(`${session.sessionNoteId}:user:${prompt}`)
+    .digest("hex")
+    .slice(0, 64);
+
   try {
     await api("POST", `/agent/sessions/${session.sessionNoteId}/turns`, {
       role: "user",
       content: prompt,
+      idempotencyKey,
     });
   } catch (err) {
     process.stderr.write(`[prompt] ${err.message}\n`);

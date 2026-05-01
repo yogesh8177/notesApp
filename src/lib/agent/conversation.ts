@@ -35,6 +35,7 @@ export async function addTurn(opts: {
   role: "user" | "assistant";
   content: string;
   noteRefs?: TurnNoteRef[];
+  idempotencyKey?: string;
 }): Promise<{ turnIndex: number }> {
   // Verify note belongs to org
   const [note] = await db
@@ -46,24 +47,37 @@ export async function addTurn(opts: {
 
   // Get next turn index atomically using a serializable-safe insert with
   // a subquery for the current max.
-  const [row] = await db
-    .insert(conversationTurns)
-    .values({
-      orgId: opts.orgId,
-      sessionNoteId: opts.sessionNoteId,
-      turnIndex: sql`(SELECT COALESCE(MAX(turn_index), -1) + 1 FROM conversation_turns WHERE session_note_id = ${opts.sessionNoteId})`,
-      role: opts.role,
-      content: opts.content,
-      noteRefs: opts.noteRefs ?? [],
-    })
-    .onConflictDoUpdate({
-      target: [conversationTurns.sessionNoteId, conversationTurns.turnIndex],
-      set: {
-        content: sql`excluded.content`,
-        noteRefs: sql`excluded.note_refs`,
-      },
-    })
-    .returning({ turnIndex: conversationTurns.turnIndex });
+  const values = {
+    orgId: opts.orgId,
+    sessionNoteId: opts.sessionNoteId,
+    turnIndex: sql`(SELECT COALESCE(MAX(turn_index), -1) + 1 FROM conversation_turns WHERE session_note_id = ${opts.sessionNoteId})`,
+    role: opts.role,
+    content: opts.content,
+    noteRefs: opts.noteRefs ?? [],
+    idempotencyKey: opts.idempotencyKey ?? null,
+  };
+
+  // Hook path (idempotency key present): skip silently on duplicate hook fire.
+  // log_turn path (no key): upsert so a second call overwrites the same turn index.
+  const [row] = opts.idempotencyKey
+    ? await db
+        .insert(conversationTurns)
+        .values(values)
+        .onConflictDoNothing({ target: conversationTurns.idempotencyKey })
+        .returning({ turnIndex: conversationTurns.turnIndex })
+    : await db
+        .insert(conversationTurns)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [conversationTurns.sessionNoteId, conversationTurns.turnIndex],
+          set: {
+            content: sql`excluded.content`,
+            noteRefs: sql`excluded.note_refs`,
+          },
+        })
+        .returning({ turnIndex: conversationTurns.turnIndex });
+
+  if (!row) return { turnIndex: -1 }; // idempotent skip — duplicate hook fire
 
   void maybeCompactConversation(opts.orgId, opts.sessionNoteId, row.turnIndex);
 

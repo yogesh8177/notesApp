@@ -25,6 +25,7 @@ const turnSchema = z.object({
     )
     .max(20)
     .default([]),
+  idempotencyKey: z.string().max(64).optional(),
 });
 
 export async function POST(
@@ -80,6 +81,7 @@ export async function POST(
       role: parsed.data.role,
       content: parsed.data.content,
       noteRefs: parsed.data.noteRefs,
+      idempotencyKey: parsed.data.idempotencyKey,
     });
 
     await audit({
