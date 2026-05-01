@@ -1,14 +1,8 @@
 /**
- * Apply Drizzle-generated migrations + the hand-written SQL files in `drizzle/`.
+ * Apply SQL migration files in `drizzle/` in lexicographic order.
+ * Tracks applied files in a `_migrations` table so repeated runs are safe.
  *
- * Order:
- *   1. drizzle-kit generated migrations (created via `pnpm db:generate`)
- *   2. 0001_extensions_and_search.sql
- *   3. 0002_rls_policies.sql
- *   4. 0003_storage_policies.sql
- *
- * Run via `pnpm db:migrate`. Idempotent — every statement uses
- * IF NOT EXISTS / OR REPLACE / DROP TRIGGER IF EXISTS.
+ * Run via `npm run db:migrate`.
  */
 import "dotenv/config";
 import { readFile, readdir } from "node:fs/promises";
@@ -24,17 +18,40 @@ async function main() {
   const sql = postgres(url, { max: 1, prepare: false });
 
   try {
+    // Ensure tracking table exists
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        filename text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+
+    const applied = new Set(
+      (await sql<{ filename: string }[]>`SELECT filename FROM _migrations`).map(
+        (r) => r.filename,
+      ),
+    );
+
     const dir = join(process.cwd(), "drizzle");
     const files = (await readdir(dir))
       .filter((f) => f.endsWith(".sql"))
       .sort();
 
+    let ran = 0;
     for (const file of files) {
+      if (applied.has(file)) {
+        console.log(`⏭  ${file} (already applied)`);
+        continue;
+      }
       console.log(`▶ ${file}`);
       const body = await readFile(join(dir, file), "utf8");
       await sql.unsafe(body);
+      await sql`INSERT INTO _migrations (filename) VALUES (${file})`;
       console.log(`✓ ${file}`);
+      ran++;
     }
+
+    if (ran === 0) console.log("Nothing to migrate.");
   } finally {
     await sql.end({ timeout: 5 });
   }
