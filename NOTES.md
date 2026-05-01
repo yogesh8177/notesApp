@@ -1096,3 +1096,13 @@ trace test
 x
 y
 z
+
+## 2026-05-01 — Concurrent write locks (orchestrator)
+
+Fixed two races in the hooks layer that caused dropped items under parallel worktree agents:
+
+1. **`current.json` collision** — two agents bootstrapping simultaneously both wrote `current.json`; last writer won, earlier agent's `log.js done` calls went to the wrong session note. Fix: `saveCurrentSession` now writes a per-branch `current_<branch>.json` alongside the global fallback; `loadCurrentSession` prefers the branch-scoped file.
+
+2. **`<sessionId>.json` dirty write** — concurrent `log.js done` or checkpoint hook processes both read-modify-write the accumulated arrays without synchronization; second write overwrites the first's item. Fix: `withLock(name, fn)` added to `_lib.js` — O_EXCL lockfile, stale-lock cleanup for crashed processes; wraps every session read-modify-write in `log.js` and `checkpoint.js`.
+
+Verified: 20-worker stress test → 0 items dropped. Integration test: 2 parallel worktrees (`test/lock-a`, `test/lock-b`), 3 commits each, all 6 + 2 merge commits accumulated correctly in the main session note.
