@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { auditLog, notes, users } from "@/lib/db/schema";
 
@@ -83,6 +83,40 @@ export async function getNoteTimeline(
       noteDeleted: noteInfo ? noteInfo.deletedAt !== null : false,
     };
   });
+}
+
+export interface ToolCallCount {
+  toolName: string;
+  callCount: number;
+}
+
+/**
+ * Return per-tool call counts for mcp.tool.call events associated with a note.
+ * Tool name is stored in resourceId; the note is identified via metadata->>'noteId'.
+ */
+export async function getNoteToolCallCounts(
+  orgId: string,
+  noteId: string,
+): Promise<ToolCallCount[]> {
+  const rows = await db
+    .select({
+      toolName: auditLog.resourceId,
+      callCount: count(auditLog.id),
+    })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.orgId, orgId),
+        eq(auditLog.action, "mcp.tool.call"),
+        sql`${auditLog.metadata}->>'noteId' = ${noteId}`,
+      ),
+    )
+    .groupBy(auditLog.resourceId)
+    .orderBy(desc(count(auditLog.id)));
+
+  return rows
+    .filter((r): r is { toolName: string; callCount: number } => r.toolName !== null)
+    .map((r) => ({ toolName: r.toolName, callCount: r.callCount }));
 }
 
 export async function getOrgTimeline(orgId: string, limit = 50): Promise<TimelineEvent[]> {

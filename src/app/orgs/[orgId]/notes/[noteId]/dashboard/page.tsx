@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getNoteDetailForUser } from "@/lib/notes";
 import { SectionCard, formatTimestamp } from "../../components";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ToolUsageChart from "./tool-usage-chart";
 
 // ---------------------------------------------------------------------------
 // Checkpoint parser
@@ -198,6 +199,11 @@ export default async function NoteAgentDashboardPage({
           </ul>
         </SectionCard>
       )}
+
+      {/* Tool Usage */}
+      <SectionCard title="Tool Usage" description="MCP tool call counts for this session note">
+        <ToolUsageChart orgId={orgId} noteId={noteId} />
+      </SectionCard>
 
       {/* Checkpoint history */}
       {recentHistory.length > 0 && (
