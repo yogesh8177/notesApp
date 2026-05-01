@@ -394,3 +394,11 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 - **Where:** `timeline/page.tsx` (agent.session.checkpoint block), `dashboard/page.tsx` (Last Commit dd)
 - **Why bad:** Links broke for any repo other than `yogesh8177/notesApp`; would silently point to wrong repo if app tracked multiple projects
 - **Fix:** `repoUrl` threaded from `_lib.js detectContext()` through checkpoint/bootstrap hooks, schemas, audit metadata, and rendered markdown — UI reads dynamic value with plain-text fallback
+
+## [MED] migrate.ts re-runs all migrations on every call, fails on second run
+
+**Where:** `scripts/db/migrate.ts` (entire file)
+**Found by:** user (npm run db:migrate failed with "type already exists" / "relation already exists")
+**What:** Script sorted and ran every `.sql` file in `drizzle/` unconditionally. Early files (0000) create enum types without IF NOT EXISTS, so the second run crashes immediately. Later files use IF NOT EXISTS on tables but not on indexes, so they also fail partway through.
+**Why bad:** `npx notes-app migrate` (and any CI re-run) fails hard, making the project non-bootstrappable.
+**Fix commit:** ed38ada — added `_migrations` tracking table; script now skips already-applied files and seeds the table for existing installs.

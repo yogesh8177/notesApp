@@ -1141,3 +1141,13 @@ Schema: `conversation_turns` + `conversation_summaries` (migration 0008).
 New "Conversation" tab on note detail page shows turns chronologically with note-version
 badges linking to History. Auto-summary cards appear inline after every 10th turn.
 New MCP tools: `log_turn`, `get_conversation`.
+
+## 2026-05-02 — npx CLI
+
+Added `bin/notes-app.js` with commands: setup, migrate, seed, dev, start.
+`package.json` `bin` field added so `npx notes-app <cmd>` works after `npm install -g` or via npx.
+Merged from `feature/npx-cli` to main and pushed.
+
+## 2026-05-02 — migration tracking fix
+
+`npm run db:migrate` was crashing on repeated runs because the script re-applied every file from scratch with no tracking. Fixed by adding a `_migrations` table; each filename is recorded on first apply and skipped thereafter. Seeded existing installs via one-time Node script. Fix: ed38ada.
