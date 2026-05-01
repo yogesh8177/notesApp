@@ -2,6 +2,9 @@
   "name": "notes-app",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "notes-app": "./bin/notes-app.js"
+  },
   "engines": {
     "node": ">=20"
   },
