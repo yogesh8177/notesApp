@@ -226,21 +226,17 @@ export async function bootstrap(
   });
 
   // "clear" = user ran /clear; skip everything except guidelines (fresh window).
-  // "resume" = explicit session resume; inject full context including conversation history.
-  // anything else ("startup", undefined) = new terminal / new session; inject checkpoint
-  // and epochs but skip conversation history (irrelevant for a fresh start).
+  // anything else = inject checkpoint, epochs, and recent tail turns for orientation.
   const skipCheckpoint = input.source === "clear";
-  const includeConversation = input.source === "resume";
 
-  const [guidelines, latestCheckpoint, epochSummaries, recentConversation, tailTurns] = await Promise.all([
+  const [guidelines, latestCheckpoint, epochSummaries, tailTurns] = await Promise.all([
     loadGuidelines(orgId),
     skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
     skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
-    includeConversation ? loadConversationSummaries(noteId) : Promise.resolve([]),
-    includeConversation ? loadTailTurns(noteId) : Promise.resolve([]),
+    skipCheckpoint ? Promise.resolve([]) : loadTailTurns(noteId),
   ]);
 
-  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries, recentConversation, tailTurns };
+  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries, recentConversation: [], tailTurns };
 }
 
 function renderCheckpoint(input: CheckpointInput): string {

@@ -27,16 +27,9 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
         "\n"
       : null;
 
-    const convSummaries = Array.isArray(payload.recentConversation) ? payload.recentConversation : [];
-    const convBlock = convSummaries.length > 0
-      ? "RECENT CONVERSATION SUMMARIES (oldest first):\n" +
-        convSummaries.map((s) => `## Turns ${s.turnStart}–${s.turnEnd}\n${s.content}`).join("\n\n---\n\n") +
-        "\n"
-      : null;
-
     const tail = Array.isArray(payload.tailTurns) ? payload.tailTurns : [];
     const tailBlock = tail.length > 0
-      ? "RECENT TURNS (unsummarized, oldest first):\n" +
+      ? "RECENT TURNS (oldest first):\n" +
         tail.map((t) => `[${t.role}] (turn ${t.turnIndex}) ${t.content}`).join("\n")
       : null;
 
@@ -45,7 +38,6 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
       payload.guidelines || "(none)",
       "",
       epochBlock,
-      convBlock,
       tailBlock,
       "RESUME CHECKPOINT:",
       payload.latestCheckpoint || "(no prior checkpoint)",
