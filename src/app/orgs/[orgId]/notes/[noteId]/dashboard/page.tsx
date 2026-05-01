@@ -148,7 +148,17 @@ export default async function NoteAgentDashboardPage({
           {checkpoint.lastCommit && (
             <>
               <dt className="font-medium text-muted-foreground">Last Commit</dt>
-              <dd className="col-span-1 font-mono sm:col-span-2">{checkpoint.lastCommit.slice(0, 8)}</dd>
+              <dd className="col-span-1 font-mono sm:col-span-2">
+                <a
+                  href={`https://github.com/yogesh8177/notesApp/commit/${checkpoint.lastCommit}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline"
+                  title={checkpoint.lastCommit}
+                >
+                  {checkpoint.lastCommit.slice(0, 8)}
+                </a>
+              </dd>
             </>
           )}
           <dt className="font-medium text-muted-foreground">Last Updated</dt>
