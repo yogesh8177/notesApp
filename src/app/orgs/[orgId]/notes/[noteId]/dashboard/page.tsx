@@ -124,6 +124,10 @@ export default async function NoteAgentDashboardPage({
 
   const recentHistory = note.history.slice(0, 10);
   const activityBars = buildActivityBars(recentHistory);
+  const commitBaseUrl = checkpoint.repoUrl
+    ?? (checkpoint.repo && /^[^/\s]+\/[^/\s]+$/.test(checkpoint.repo)
+      ? `https://github.com/${checkpoint.repo}`
+      : null);
 
   return (
     <div className="space-y-4">
@@ -152,9 +156,9 @@ export default async function NoteAgentDashboardPage({
             <>
               <dt className="font-medium text-muted-foreground">Last Commit</dt>
               <dd className="col-span-1 font-mono sm:col-span-2">
-                {checkpoint.repoUrl ? (
+                {commitBaseUrl ? (
                   <a
-                    href={`${checkpoint.repoUrl}/commit/${checkpoint.lastCommit}`}
+                    href={`${commitBaseUrl}/commit/${checkpoint.lastCommit}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:underline"

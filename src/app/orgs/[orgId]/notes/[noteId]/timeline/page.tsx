@@ -206,7 +206,10 @@ function EventDescription({ event }: { event: TimelineEvent }) {
   if (action === "agent.session.checkpoint") {
     const event2 = typeof meta.event === "string" ? meta.event : null;
     const lastCommit = typeof meta.lastCommit === "string" ? meta.lastCommit : null;
-    const repoUrl = typeof meta.repoUrl === "string" ? meta.repoUrl : null;
+    const repo = typeof meta.repo === "string" ? meta.repo : null;
+    const repoUrl = typeof meta.repoUrl === "string"
+      ? meta.repoUrl
+      : (repo && /^[^/\s]+\/[^/\s]+$/.test(repo) ? `https://github.com/${repo}` : null);
     const tokenName = typeof meta.tokenName === "string" ? meta.tokenName : null;
     return (
       <span className="flex flex-wrap items-baseline gap-1.5">
