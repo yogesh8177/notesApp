@@ -1,8 +1,9 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentSessions,
   conversationSummaries,
+  conversationTurns,
   noteVersions,
   notes,
   sessionEpochSummaries,
@@ -29,12 +30,19 @@ export interface ConversationSummaryEntry {
   content: string;
 }
 
+export interface TailTurnEntry {
+  turnIndex: number;
+  role: string;
+  content: string;
+}
+
 export interface BootstrapResult {
   sessionNoteId: string;
   guidelines: string;
   latestCheckpoint: string;
   epochSummaries: EpochSummaryEntry[];
   recentConversation: ConversationSummaryEntry[];
+  tailTurns: TailTurnEntry[];
 }
 
 export interface CheckpointResult {
@@ -86,6 +94,36 @@ async function loadConversationSummaries(noteId: string): Promise<ConversationSu
     .where(eq(conversationSummaries.sessionNoteId, noteId))
     .orderBy(conversationSummaries.turnEnd)
     .limit(5);
+  return rows;
+}
+
+async function loadTailTurns(noteId: string): Promise<TailTurnEntry[]> {
+  // Find the highest turnEnd already covered by a summary
+  const [lastSummary] = await db
+    .select({ turnEnd: conversationSummaries.turnEnd })
+    .from(conversationSummaries)
+    .where(eq(conversationSummaries.sessionNoteId, noteId))
+    .orderBy(desc(conversationSummaries.turnEnd))
+    .limit(1);
+
+  const afterIndex = lastSummary?.turnEnd ?? -1;
+
+  const rows = await db
+    .select({
+      turnIndex: conversationTurns.turnIndex,
+      role: conversationTurns.role,
+      content: conversationTurns.content,
+    })
+    .from(conversationTurns)
+    .where(
+      and(
+        eq(conversationTurns.sessionNoteId, noteId),
+        gt(conversationTurns.turnIndex, afterIndex),
+      ),
+    )
+    .orderBy(conversationTurns.turnIndex)
+    .limit(20);
+
   return rows;
 }
 
@@ -195,14 +233,15 @@ export async function bootstrap(
   // per-session state, so they always come back.
   const skipCheckpoint = input.source === "clear";
 
-  const [guidelines, latestCheckpoint, epochSummaries, recentConversation] = await Promise.all([
+  const [guidelines, latestCheckpoint, epochSummaries, recentConversation, tailTurns] = await Promise.all([
     loadGuidelines(orgId),
     skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
     skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
     skipCheckpoint ? Promise.resolve([]) : loadConversationSummaries(noteId),
+    skipCheckpoint ? Promise.resolve([]) : loadTailTurns(noteId),
   ]);
 
-  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries, recentConversation };
+  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries, recentConversation, tailTurns };
 }
 
 function renderCheckpoint(input: CheckpointInput): string {

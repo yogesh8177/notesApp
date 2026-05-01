@@ -34,12 +34,19 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
         "\n"
       : null;
 
+    const tail = Array.isArray(payload.tailTurns) ? payload.tailTurns : [];
+    const tailBlock = tail.length > 0
+      ? "RECENT TURNS (unsummarized, oldest first):\n" +
+        tail.map((t) => `[${t.role}] (turn ${t.turnIndex}) ${t.content}`).join("\n")
+      : null;
+
     const text = [
       "ORG GUIDELINES:",
       payload.guidelines || "(none)",
       "",
       epochBlock,
       convBlock,
+      tailBlock,
       "RESUME CHECKPOINT:",
       payload.latestCheckpoint || "(no prior checkpoint)",
     ].filter(Boolean).join("\n");
