@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, uniqueIndex, index, integer } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { orgs } from "./orgs";
 import { notes } from "./notes";
@@ -62,5 +62,31 @@ export const agentTokens = pgTable(
   (t) => ({
     hashUnique: uniqueIndex("agent_tokens_hash_unique").on(t.tokenHash),
     orgActiveIdx: index("agent_tokens_org_active_idx").on(t.orgId),
+  }),
+);
+
+export const sessionEpochSummaries = pgTable(
+  "session_epoch_summaries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => notes.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+    epochStart: integer("epoch_start").notNull(),
+    epochEnd: integer("epoch_end").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => ({
+    noteIdx: index("session_epoch_summaries_note_idx").on(t.noteId),
+    noteEpochUnique: uniqueIndex("session_epoch_summaries_note_epoch_unique").on(
+      t.noteId,
+      t.epochEnd,
+    ),
   }),
 );

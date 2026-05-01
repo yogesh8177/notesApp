@@ -1114,3 +1114,16 @@ Now `_lib.js` normalizes the git remote to HTTPS (`repoUrl`) and threads it thro
 hook payload → schemas → audit metadata → rendered checkpoint markdown → UI.
 Both timeline and dashboard use `meta.repoUrl` / `checkpoint.repoUrl` for links, with graceful
 fallback to plain text when the field is absent (old events).
+
+## 2026-05-01 — session history compaction (Option A + B)
+
+Option A: "Compact History" button on dashboard triggers a server action that reads the last 20
+`note_versions`, calls claude-haiku to synthesize them into one condensed checkpoint, and writes
+a new version with `changeSummary: "compact:vN-vM"`.
+
+Option B: In `sessions.ts checkpoint()`, after every 10 versions, `maybeCompactEpoch()` fires
+async (fire-and-forget). It reads the 10-version window, calls claude-haiku, and inserts a row
+into `session_epoch_summaries` (new table, migration 0007). Dashboard shows epoch summaries as
+collapsed violet cards beneath the raw checkpoint list.
+
+No schema change to frozen tables — new `session_epoch_summaries` is additive agent-module-only.

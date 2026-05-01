@@ -6,6 +6,8 @@ import ToolUsageChart from "./tool-usage-chart";
 import { ActivityChart } from "./activity-chart";
 import { buildActivityBars } from "./build-activity-bars";
 import { HealthBadge } from "./health-badge";
+import { CompactButton } from "./compact-button";
+import { getEpochSummaries } from "@/lib/agent/queries";
 
 // ---------------------------------------------------------------------------
 // Checkpoint parser
@@ -124,6 +126,7 @@ export default async function NoteAgentDashboardPage({
 
   const recentHistory = note.history.slice(0, 10);
   const activityBars = buildActivityBars(recentHistory);
+  const epochSummaries = await getEpochSummaries(noteId);
   const commitBaseUrl = checkpoint.repoUrl
     ?? (checkpoint.repo && /^[^/\s]+\/[^/\s]+$/.test(checkpoint.repo)
       ? `https://github.com/${checkpoint.repo}`
@@ -247,6 +250,9 @@ export default async function NoteAgentDashboardPage({
             <p className="mb-2 text-xs font-medium text-muted-foreground">Checkpoint activity</p>
             <ActivityChart bars={activityBars} />
           </div>
+          <div className="mb-3 flex justify-end">
+            <CompactButton noteId={noteId} orgId={orgId} />
+          </div>
           <ol className="space-y-2">
             {recentHistory.map((v) => (
               <li
@@ -269,6 +275,39 @@ export default async function NoteAgentDashboardPage({
               </li>
             ))}
           </ol>
+          {epochSummaries.length > 0 && (
+            <div className="mt-4 border-t pt-4">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Auto-compacted epochs</p>
+              <ol className="space-y-2">
+                {epochSummaries.map((epoch) => (
+                  <li
+                    key={epoch.id}
+                    className="rounded-md border border-violet-200 bg-violet-50 p-3 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded border border-violet-300 bg-violet-100 px-1.5 py-0.5 font-mono text-xs text-violet-700">
+                          v{epoch.epochStart}–{epoch.epochEnd}
+                        </span>
+                        <span className="text-xs text-muted-foreground">Epoch summary</span>
+                      </div>
+                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={epoch.createdAt.toISOString()}>
+                        {formatTimestamp(epoch.createdAt)}
+                      </time>
+                    </div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                        Show summary
+                      </summary>
+                      <pre className="mt-2 whitespace-pre-wrap font-mono text-xs text-muted-foreground">
+                        {epoch.content}
+                      </pre>
+                    </details>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </SectionCard>
       )}
     </div>

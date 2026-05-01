@@ -4,11 +4,15 @@ import {
   agentSessions,
   noteVersions,
   notes,
+  sessionEpochSummaries,
 } from "@/lib/db/schema";
 import { audit } from "@/lib/log/audit";
 import { log } from "@/lib/log";
+import { compactCheckpoints } from "@/lib/ai/compact";
 import type { AgentPrincipal } from "./auth";
 import type { BootstrapInput, CheckpointInput } from "./schemas";
+
+const EPOCH_SIZE = 10;
 
 const GUIDELINES_TITLE = "Agent Guidelines";
 
@@ -302,5 +306,61 @@ export async function checkpoint(
     userAgent: meta.userAgent,
   });
 
+  // Fire-and-forget: auto-compact every EPOCH_SIZE versions
+  void maybeCompactEpoch(orgId, sessionNoteId, result.version);
+
   return { ok: true, result: { sessionNoteId, version: result.version } };
+}
+
+async function maybeCompactEpoch(
+  orgId: string,
+  noteId: string,
+  version: number,
+): Promise<void> {
+  if (version % EPOCH_SIZE !== 0) return;
+
+  const epochStart = version - EPOCH_SIZE + 1;
+  const epochEnd = version;
+
+  // Idempotent: skip if already compacted
+  const [existing] = await db
+    .select({ id: sessionEpochSummaries.id })
+    .from(sessionEpochSummaries)
+    .where(
+      and(
+        eq(sessionEpochSummaries.noteId, noteId),
+        eq(sessionEpochSummaries.epochEnd, epochEnd),
+      ),
+    )
+    .limit(1);
+  if (existing) return;
+
+  const rows = await db
+    .select({ version: noteVersions.version, content: noteVersions.content })
+    .from(noteVersions)
+    .where(
+      and(
+        eq(noteVersions.noteId, noteId),
+        sql`${noteVersions.version} >= ${epochStart}`,
+        sql`${noteVersions.version} <= ${epochEnd}`,
+      ),
+    )
+    .orderBy(noteVersions.version);
+
+  if (rows.length === 0) return;
+
+  try {
+    const result = await compactCheckpoints(rows);
+    await db.insert(sessionEpochSummaries).values({
+      noteId,
+      orgId,
+      epochStart,
+      epochEnd,
+      content: result.content,
+    }).onConflictDoNothing();
+
+    log.info({ noteId, epochStart, epochEnd }, "agent.session.epoch.compacted");
+  } catch (err) {
+    log.error({ noteId, epochStart, epochEnd, err }, "agent.session.epoch.compact.failed");
+  }
 }
