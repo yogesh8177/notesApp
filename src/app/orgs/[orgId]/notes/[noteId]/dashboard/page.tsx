@@ -254,18 +254,20 @@ export default async function NoteAgentDashboardPage({
             <CompactButton noteId={noteId} orgId={orgId} />
           </div>
           <ol className="space-y-2">
-            {recentHistory.map((v) => (
+            {recentHistory.map((v) => {
+              const isCompact = v.changeSummary?.startsWith("compact:");
+              return (
               <li
                 key={v.id}
-                className="flex items-start justify-between gap-4 rounded-md border p-3 text-sm"
+                className={`flex items-start justify-between gap-4 rounded-md border p-3 text-sm ${isCompact ? "border-violet-200 bg-violet-50" : ""}`}
               >
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-xs">
+                    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-xs ${isCompact ? "border-violet-300 bg-violet-100 text-violet-700" : ""}`}>
                       v{v.version}
                     </span>
                     {v.changeSummary && (
-                      <span className="truncate text-xs text-muted-foreground">{v.changeSummary}</span>
+                      <span className={`truncate text-xs ${isCompact ? "font-medium text-violet-600" : "text-muted-foreground"}`}>{v.changeSummary}</span>
                     )}
                   </div>
                 </div>
@@ -273,7 +275,8 @@ export default async function NoteAgentDashboardPage({
                   {formatTimestamp(v.createdAt)}
                 </time>
               </li>
-            ))}
+              );
+            })}
           </ol>
           {epochSummaries.length > 0 && (
             <div className="mt-4 border-t pt-4">

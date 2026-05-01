@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { Message } from "@anthropic-ai/sdk/resources/messages";
 import { env } from "@/lib/env";
 
 const MODEL = "claude-haiku-4-5-20251001";
@@ -34,21 +35,22 @@ export async function compactCheckpoints(versions: { version: number; content: s
     "</checkpoints>",
   ].join("\n");
 
-  const response = await Promise.race([
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("compact timeout")), REQUEST_TIMEOUT_MS),
+  );
+
+  const response = await Promise.race<Message>([
     client.messages.create({
       model: MODEL,
       max_tokens: 2048,
       messages: [{ role: "user", content: prompt }],
     }),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("compact timeout")), REQUEST_TIMEOUT_MS),
-    ),
+    timeout,
   ]);
 
-  const text = (response as Awaited<ReturnType<typeof client.messages.create>>)
-    .content
-    .filter((b) => b.type === "text")
-    .map((b) => (b as { type: "text"; text: string }).text)
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
     .join("");
 
   return { content: text.trim(), model: MODEL };
