@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex, index, integer } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, uniqueIndex, index, integer, jsonb } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { orgs } from "./orgs";
 import { notes } from "./notes";
@@ -87,6 +87,61 @@ export const sessionEpochSummaries = pgTable(
     noteEpochUnique: uniqueIndex("session_epoch_summaries_note_epoch_unique").on(
       t.noteId,
       t.epochEnd,
+    ),
+  }),
+);
+
+export const conversationTurns = pgTable(
+  "conversation_turns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+    sessionNoteId: uuid("session_note_id")
+      .notNull()
+      .references(() => notes.id, { onDelete: "cascade" }),
+    turnIndex: integer("turn_index").notNull(),
+    role: text("role").notNull(), // "user" | "assistant"
+    content: text("content").notNull(),
+    noteRefs: jsonb("note_refs")
+      .$type<{ noteId: string; version?: number; title?: string }[]>()
+      .default([]),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => ({
+    sessionIdx: index("conversation_turns_session_idx").on(t.sessionNoteId),
+    sessionTurnUnique: uniqueIndex("conversation_turns_session_turn_unique").on(
+      t.sessionNoteId,
+      t.turnIndex,
+    ),
+  }),
+);
+
+export const conversationSummaries = pgTable(
+  "conversation_summaries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+    sessionNoteId: uuid("session_note_id")
+      .notNull()
+      .references(() => notes.id, { onDelete: "cascade" }),
+    turnStart: integer("turn_start").notNull(),
+    turnEnd: integer("turn_end").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => ({
+    sessionIdx: index("conversation_summaries_session_idx").on(t.sessionNoteId),
+    sessionWindowUnique: uniqueIndex("conversation_summaries_session_window_unique").on(
+      t.sessionNoteId,
+      t.turnEnd,
     ),
   }),
 );
