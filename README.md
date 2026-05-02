@@ -7,19 +7,29 @@ A multi-tenant team notes platform. Users belong to multiple organisations; each
 ## Quick start
 
 ```bash
+# 1. Configure environment variables (.env)
+npx collab-memory setup
+
+# 2. Wire Claude Code hooks + MCP into this project
 npx collab-memory hooks-setup
+
+# 3. Apply database migrations
+npx collab-memory migrate
+
+# 4. Start the dev server
+npx collab-memory dev
 ```
 
-That's the one command a new contributor needs. It will:
+**What each step does:**
 
-1. Copy the Claude Code hook scripts into `.claude/hooks/`
-2. Write `.claude/settings.json` (lifecycle hook registrations)
-3. Write `.mcp.json` (notes-app MCP server entry)
-4. Prompt for your `MEMORY_AGENT_TOKEN`, org ID, and user ID and save them to `.env`
+| Command | What it does |
+|---|---|
+| `setup` | Interactive prompt for every `.env` variable — Supabase URLs, API keys, app URL |
+| `hooks-setup` | Copies hook scripts to `.claude/hooks/`, writes `.claude/settings.json` and `.mcp.json`, prompts for agent token |
+| `migrate` | Applies all SQL migrations in `drizzle/` including RLS policies and storage bucket policies |
+| `dev` | Starts the Next.js dev server on `http://localhost:3000` |
 
-After setup, open Claude Code — hooks fire automatically on every session.
-
-> **Get a token:** start the app (`npx collab-memory dev`), sign in, go to **Org Settings → Agent Tokens → New token**.
+> **Agent token:** after `dev` is running, sign in, open an org, go to **Org Settings → Agent Tokens → New token**. Then re-run `npx collab-memory hooks-setup` to save it.
 
 ## Features
 
