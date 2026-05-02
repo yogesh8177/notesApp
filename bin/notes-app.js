@@ -245,53 +245,32 @@ Steps:
   // ── Step 4: agent token ───────────────────────────────────────────────────
   console.log("── Step 4/4  Agent token ───────────────────────────────────────");
   console.log(`
-  The hooks authenticate to the notes-app API using a bearer token.
-  There are two ways to obtain one:
+  The hooks authenticate using a bearer token bound to an org + user.
+  Org and user are resolved server-side from the token — no IDs needed.
 
-  A) Via the app UI  (recommended for team use)
-     ┌─────────────────────────────────────────────────────────┐
-     │ 1. Start the app:                                       │
-     │      npx collab-memory dev                              │
-     │ 2. Sign in, open (or create) an org.                    │
-     │ 3. Go to: Org Settings → Agent Tokens → "New token"     │
-     │ 4. Copy the token — it starts with  nat_  and is        │
-     │    shown only once.                                     │
-     │ 5. Copy the Org ID and User ID shown on the same page.  │
-     └─────────────────────────────────────────────────────────┘
-
-  B) Env-var fallback  (single-user / no UI yet)
-     Generate a random token and set it directly in .env:
-       openssl rand -hex 32   ← paste output as MEMORY_AGENT_TOKEN
-     Then also set MEMORY_AGENT_ORG_ID and MEMORY_AGENT_USER_ID
-     to the org and user UUIDs you want the agent to act as.
-     (The app falls back to this path when the token doesn't
-      match the  nat_  token table.)
-
-  Either way, all three variables must be set for the hooks to work.
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 1. Start the app:  npx collab-memory dev                    │
+  │ 2. Sign in and open (or create) an org.                     │
+  │ 3. Go to: Org Settings → Agent Tokens → "New token"         │
+  │ 4. Copy the token — it starts with  nat_  and is            │
+  │    shown only once.                                         │
+  │                                                             │
+  │ One org = one isolated workspace. Use a separate org        │
+  │ (and token) per project to keep session memory scoped.      │
+  └─────────────────────────────────────────────────────────────┘
 `);
 
-  const existingToken  = envVals.MEMORY_AGENT_TOKEN   || "";
-  const existingOrgId  = envVals.MEMORY_AGENT_ORG_ID  || "";
-  const existingUserId = envVals.MEMORY_AGENT_USER_ID  || "";
+  const existingToken = envVals.MEMORY_AGENT_TOKEN || "";
+  const tokenHint = existingToken ? ` [${existingToken.slice(0, 8)}…]` : "";
 
-  const tokenHint  = existingToken  ? ` [${existingToken.slice(0, 8)}…]` : "";
-  const orgHint    = existingOrgId  ? ` [${existingOrgId}]`  : "";
-  const userHint   = existingUserId ? ` [${existingUserId}]` : "";
-
-  const token  = (await ask(`  MEMORY_AGENT_TOKEN${tokenHint}: `)).trim()  || existingToken;
-  const orgId  = (await ask(`  MEMORY_AGENT_ORG_ID${orgHint}: `)).trim()   || existingOrgId;
-  const userId = (await ask(`  MEMORY_AGENT_USER_ID${userHint}: `)).trim() || existingUserId;
+  const token = (await ask(`  MEMORY_AGENT_TOKEN${tokenHint}: `)).trim() || existingToken;
 
   rl.close();
 
-  if (token)  writeEnvKey("MEMORY_AGENT_TOKEN",   token);
-  if (orgId)  writeEnvKey("MEMORY_AGENT_ORG_ID",  orgId);
-  if (userId) writeEnvKey("MEMORY_AGENT_USER_ID", userId);
-
-  const allSet = token && orgId && userId;
+  if (token) writeEnvKey("MEMORY_AGENT_TOKEN", token);
 
   console.log(`
-  ${allSet ? "✓" : "⚠"} Token env vars ${allSet ? "saved to .env." : "partially saved — fill in any blanks in .env before starting Claude Code."}
+  ${token ? "✓" : "⚠"} ${token ? "Token saved to .env." : "No token entered — set MEMORY_AGENT_TOKEN in .env before starting Claude Code."}
 
   IMPORTANT: .env is git-ignored. Never commit your token.
 `);
