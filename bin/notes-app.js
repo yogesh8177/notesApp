@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 "use strict";
 
-const { execSync, spawn } = require("child_process");
+const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
-const ROOT = path.resolve(__dirname, "..");
-const ENV_FILE = path.join(ROOT, ".env");
+// When run via npx, __dirname is inside the npm cache. All writes must target
+// the user's project directory (cwd), not the package install location.
+const ROOT     = process.cwd();
+const PKG_ROOT = path.resolve(__dirname, "..");
+
+const ENV_FILE    = path.join(ROOT, ".env");
 const ENV_EXAMPLE = path.join(ROOT, ".env.example");
 
-const [, , command, ...args] = process.argv;
+const [, , command] = process.argv;
 
 const COMMANDS = {
   setup:         "Interactively configure .env from .env.example",
@@ -23,7 +27,7 @@ const COMMANDS = {
 };
 
 function help() {
-  console.log("\nUsage: npx notes-app <command>\n");
+  console.log("\nUsage: npx collab-memory <command>\n");
   for (const [cmd, desc] of Object.entries(COMMANDS)) {
     console.log(`  ${cmd.padEnd(14)} ${desc}`);
   }
@@ -48,7 +52,6 @@ async function setup() {
   const example = fs.readFileSync(ENV_EXAMPLE, "utf8");
   const lines = example.split("\n");
 
-  // Parse existing .env if present
   const existing = {};
   if (fs.existsSync(ENV_FILE)) {
     const current = fs.readFileSync(ENV_FILE, "utf8");
@@ -77,7 +80,7 @@ async function setup() {
 
   rl.close();
   fs.writeFileSync(ENV_FILE, out.join("\n") + "\n");
-  console.log("\n.env written.\n\nNext steps:\n  npx notes-app hooks-setup   Wire Claude Code hooks + MCP\n  npx notes-app migrate        Apply DB migrations\n");
+  console.log("\n.env written.\n\nNext steps:\n  npx collab-memory hooks-setup   Wire Claude Code hooks + MCP\n  npx collab-memory migrate        Apply DB migrations\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -85,12 +88,14 @@ async function setup() {
 // ---------------------------------------------------------------------------
 
 const CLAUDE_DIR    = path.join(ROOT, ".claude");
-const HOOKS_SRC     = path.join(CLAUDE_DIR, "hooks");
+const HOOKS_DST     = path.join(CLAUDE_DIR, "hooks");
+const HOOKS_PKG     = path.join(PKG_ROOT, ".claude", "hooks");
 const SETTINGS_PATH = path.join(CLAUDE_DIR, "settings.json");
 const MCP_PATH      = path.join(ROOT, ".mcp.json");
 
-const REQUIRED_HOOKS = [
-  "_lib.js", "bootstrap.js", "recall.js", "checkpoint.js", "event.js", "log.js",
+const HOOK_FILES = [
+  "_lib.js", "bootstrap.js", "recall.js", "checkpoint.js",
+  "event.js", "log.js", "prompt.js", "stop.js",
 ];
 
 const SETTINGS_TEMPLATE = {
@@ -115,6 +120,7 @@ const SETTINGS_TEMPLATE = {
     ],
     SubagentStart: [{ hooks: [{ type: "command", command: "node .claude/hooks/event.js" }] }],
     SubagentStop:  [{ hooks: [{ type: "command", command: "node .claude/hooks/event.js" }] }],
+    Stop:          [{ hooks: [{ type: "command", command: "node .claude/hooks/stop.js" }] }],
     PreCompact:    [{ hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }] }],
     SessionEnd:    [{ hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }] }],
   },
@@ -159,32 +165,44 @@ async function hooksSetup() {
 
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║        Claude Code hooks + MCP setup — notes-app            ║
+║       Claude Code hooks + MCP setup — collab-memory         ║
 ╚══════════════════════════════════════════════════════════════╝
 
 This wizard wires Claude Code lifecycle hooks into your project
 so every agent session is automatically checkpointed and recalled.
 
 Steps:
-  1. Verify hook scripts exist in .claude/hooks/
+  1. Copy hook scripts into .claude/hooks/
   2. Write .claude/settings.json  (hook event registrations)
   3. Write .mcp.json              (notes-app MCP server entry)
   4. Configure agent token in .env
 `);
 
-  // ── Step 1: verify hooks ──────────────────────────────────────────────────
+  // ── Step 1: copy hook scripts ─────────────────────────────────────────────
   console.log("── Step 1/4  Hook scripts ──────────────────────────────────────");
-  const missing = REQUIRED_HOOKS.filter((f) => !fs.existsSync(path.join(HOOKS_SRC, f)));
-  if (missing.length > 0) {
-    console.error("\n  ERROR: The following hook files are missing from .claude/hooks/:\n");
-    for (const f of missing) console.error(`    • ${f}`);
-    console.error(`
-  These scripts ship with the repo. If you cloned from GitHub they should
-  already be present. Ensure your clone is complete and try again.\n`);
-    rl.close();
-    process.exit(1);
+
+  const existingHooks = fs.existsSync(HOOKS_DST)
+    ? fs.readdirSync(HOOKS_DST).filter((f) => HOOK_FILES.includes(f))
+    : [];
+
+  if (existingHooks.length > 0) {
+    const ans = await ask(`  .claude/hooks/ already has hook files. Overwrite? [y/N] `);
+    if (ans.trim().toLowerCase() !== "y") {
+      console.log("  Skipped.\n");
+    } else {
+      fs.mkdirSync(HOOKS_DST, { recursive: true });
+      for (const f of HOOK_FILES) {
+        fs.copyFileSync(path.join(HOOKS_PKG, f), path.join(HOOKS_DST, f));
+      }
+      console.log("  ✓ Hook scripts copied.\n");
+    }
+  } else {
+    fs.mkdirSync(HOOKS_DST, { recursive: true });
+    for (const f of HOOK_FILES) {
+      fs.copyFileSync(path.join(HOOKS_PKG, f), path.join(HOOKS_DST, f));
+    }
+    console.log("  ✓ Hook scripts copied.\n");
   }
-  console.log("  ✓ All hook scripts present.\n");
 
   // ── Step 2: .claude/settings.json ────────────────────────────────────────
   console.log("── Step 2/4  .claude/settings.json ─────────────────────────────");
@@ -233,7 +251,7 @@ Steps:
   A) Via the app UI  (recommended for team use)
      ┌─────────────────────────────────────────────────────────┐
      │ 1. Start the app:                                       │
-     │      npx notes-app dev                                  │
+     │      npx collab-memory dev                              │
      │ 2. Sign in, open (or create) an org.                    │
      │ 3. Go to: Org Settings → Agent Tokens → "New token"     │
      │ 4. Copy the token — it starts with  nat_  and is        │
@@ -256,9 +274,9 @@ Steps:
   const existingOrgId  = envVals.MEMORY_AGENT_ORG_ID  || "";
   const existingUserId = envVals.MEMORY_AGENT_USER_ID  || "";
 
-  const tokenHint  = existingToken  ? ` [${existingToken.slice(0, 8)}…]`  : "";
-  const orgHint    = existingOrgId  ? ` [${existingOrgId}]`   : "";
-  const userHint   = existingUserId ? ` [${existingUserId}]`  : "";
+  const tokenHint  = existingToken  ? ` [${existingToken.slice(0, 8)}…]` : "";
+  const orgHint    = existingOrgId  ? ` [${existingOrgId}]`  : "";
+  const userHint   = existingUserId ? ` [${existingUserId}]` : "";
 
   const token  = (await ask(`  MEMORY_AGENT_TOKEN${tokenHint}: `)).trim()  || existingToken;
   const orgId  = (await ask(`  MEMORY_AGENT_ORG_ID${orgHint}: `)).trim()   || existingOrgId;
@@ -281,9 +299,9 @@ Steps:
   console.log(`── Done ────────────────────────────────────────────────────────
 
   Recommended next steps:
-    npx notes-app migrate    Apply DB migrations
-    npx notes-app dev        Start the dev server
-    claude                   Open Claude Code — hooks fire automatically
+    npx collab-memory migrate    Apply DB migrations
+    npx collab-memory dev        Start the dev server
+    claude                       Open Claude Code — hooks fire automatically
 `);
 }
 
