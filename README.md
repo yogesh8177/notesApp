@@ -1,4 +1,4 @@
-# Notes App
+# Collab Memory
 
 ![CollabNotes hero infographic](./assets/infographic-79aa905e-01b1-425a-a5db-6b9921224540.png)
 

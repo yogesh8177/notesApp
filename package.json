@@ -1,13 +1,15 @@
 {
   "name": "collab-memory",
-  "version": "0.1.3",
+  "version": "0.1.5",
+  "license": "MIT",
   "bin": {
     "collab-memory": "./bin/notes-app.js"
   },
   "files": [
     "bin/",
     ".claude/hooks/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
