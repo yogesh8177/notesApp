@@ -1,10 +1,14 @@
 {
-  "name": "notes-app",
+  "name": "collab-memory",
   "version": "0.1.0",
-  "private": true,
   "bin": {
-    "notes-app": "./bin/notes-app.js"
+    "collab-memory": "./bin/notes-app.js"
   },
+  "files": [
+    "bin/",
+    ".claude/hooks/",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20"
   },
