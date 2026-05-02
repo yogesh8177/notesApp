@@ -13,9 +13,20 @@ const { readStdin, loadCurrentSession, loadSession, api } = require("./_lib");
 
 const MAX_CONTENT_LEN = 4000;
 
-/** Derive the Claude project storage key from the working directory. */
-function projectKey(cwd) {
-  return (cwd || process.cwd()).replace(/\//g, "-");
+/**
+ * Find the JSONL transcript for a session by scanning ~/.claude/projects/.
+ * Avoids computing Claude's internal project-key transformation, which varies
+ * by OS and path content (slashes, spaces, special chars).
+ */
+function findJsonlPath(sessionId) {
+  const projectsDir = path.join(os.homedir(), ".claude", "projects");
+  try {
+    for (const proj of fs.readdirSync(projectsDir)) {
+      const candidate = path.join(projectsDir, proj, `${sessionId}.jsonl`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch { /* projects dir missing */ }
+  return null;
 }
 
 /**
@@ -23,10 +34,8 @@ function projectKey(cwd) {
  * Returns { text, uuid } where uuid is the message's UUID for idempotency.
  */
 function getLastAssistantMessage(sessionId) {
-  const cwd = process.cwd();
-  const key = projectKey(cwd);
-  const jsonlPath = path.join(os.homedir(), ".claude", "projects", key, `${sessionId}.jsonl`);
-  if (!fs.existsSync(jsonlPath)) return null;
+  const jsonlPath = findJsonlPath(sessionId);
+  if (!jsonlPath) return null;
 
   const lines = fs.readFileSync(jsonlPath, "utf8").split("\n").filter(Boolean);
 

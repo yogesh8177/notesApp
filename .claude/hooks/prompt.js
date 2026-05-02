@@ -35,4 +35,11 @@ const MIN_LEN = 4;
   } catch (err) {
     process.stderr.write(`[prompt] ${err.message}\n`);
   }
+
+  // Inject a reminder so the model logs its own response via mcp__notes-app__log_turn
+  // as a fallback in case the Stop hook misses a turn.
+  process.stdout.write(JSON.stringify({
+    hookSpecificPromptAppend:
+      "After your final response this turn, call mcp__notes-app__log_turn to record your assistant message in the session log.",
+  }));
 })();
