@@ -4,6 +4,23 @@
 
 A multi-tenant team notes platform. Users belong to multiple organisations; each organisation has members, notes, files, and role-based permissions enforced end-to-end — from the UI down to Postgres row-level security.
 
+## Quick start
+
+```bash
+npx collab-memory hooks-setup
+```
+
+That's the one command a new contributor needs. It will:
+
+1. Copy the Claude Code hook scripts into `.claude/hooks/`
+2. Write `.claude/settings.json` (lifecycle hook registrations)
+3. Write `.mcp.json` (notes-app MCP server entry)
+4. Prompt for your `MEMORY_AGENT_TOKEN`, org ID, and user ID and save them to `.env`
+
+After setup, open Claude Code — hooks fire automatically on every session.
+
+> **Get a token:** start the app (`npx collab-memory dev`), sign in, go to **Org Settings → Agent Tokens → New token**.
+
 ## Features
 
 - **Auth + multi-tenancy** — magic link / password sign-in via Supabase Auth. Users can create and switch between organisations. Role hierarchy: `owner → admin → member → viewer`.
