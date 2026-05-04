@@ -124,13 +124,18 @@ function buildGraphData(
 ): GraphData {
   const nodes: GraphNode[] = [];
   const seenNodeIds = new Set<string>();
+  // neo4j-driver v5: relationships only carry startNodeElementId/endNodeElementId
+  // (internal Neo4j IDs), not embedded node properties. Build a lookup so we can
+  // resolve those back to our application-level string IDs.
+  const elementIdToAppId = new Map<string, string>();
 
   for (const n of rawNodes) {
-    const node = n as { labels: string[]; properties: Record<string, unknown> };
+    const node = n as { labels: string[]; properties: Record<string, unknown>; elementId?: string };
     const props = node.properties;
     const nodeId = String(props.id ?? "");
     if (!nodeId || seenNodeIds.has(nodeId)) continue;
     seenNodeIds.add(nodeId);
+    if (node.elementId) elementIdToAppId.set(node.elementId, nodeId);
     const nodeType = toGraphNodeType(node.labels?.[0] ?? "Note");
     nodes.push({
       id: nodeId,
@@ -149,16 +154,13 @@ function buildGraphData(
       properties: Record<string, unknown>;
       startNodeElementId?: string;
       endNodeElementId?: string;
-      start?: { properties: Record<string, unknown> };
-      end?: { properties: Record<string, unknown> };
     };
 
-    // Neo4j driver returns elementId for nodes in relationships
-    const sourceId = rel.start?.properties?.id
-      ? String(rel.start.properties.id)
+    const sourceId = rel.startNodeElementId
+      ? (elementIdToAppId.get(rel.startNodeElementId) ?? null)
       : null;
-    const targetId = rel.end?.properties?.id
-      ? String(rel.end.properties.id)
+    const targetId = rel.endNodeElementId
+      ? (elementIdToAppId.get(rel.endNodeElementId) ?? null)
       : null;
 
     if (!sourceId || !targetId) continue;
