@@ -137,8 +137,9 @@ export function GraphCanvas({ data, orgId: _orgId, centerNodeId, expandedNodeId,
         onEngineStop={() => {
           if (centeredRef.current || !centerNodeId || !fgRef.current) return;
           centeredRef.current = true;
-          const nodes: ForceNode[] = fgRef.current.graphData().nodes;
-          const target = nodes.find((n) => n.id === centerNodeId);
+          // force-graph mutates node objects in-place with x/y as the sim runs,
+          // so graphData.nodes already has current positions at engine stop.
+          const target = graphData.nodes.find((n) => n.id === centerNodeId);
           if (target?.x != null && target?.y != null) {
             fgRef.current.centerAt(target.x, target.y, 600);
             fgRef.current.zoom(2.5, 600);
