@@ -2,12 +2,16 @@
 
 ![CollabNotes hero infographic](./assets/infographic-79aa905e-01b1-425a-a5db-6b9921224540.png)
 
-A multi-tenant team notes platform. Users belong to multiple organisations; each organisation has members, notes, files, and role-based permissions enforced end-to-end — from the UI down to Postgres row-level security.
+**Collab Memory** is a shared memory layer for human teams and AI agents. Every note, conversation, decision, and agent action lands in the same searchable, versioned, org-scoped workspace. Humans write notes; agents read context and checkpoint progress — and both show up in the same audit trail and graph.
+
+The app is designed around one idea: **an AI agent should have the same persistent memory as a human teammate.** When a Claude Code session starts it resumes where it left off. When it commits it logs the work. When it searches it finds notes written by humans and agents alike. When it stops, the session is snapshotted as a versioned note for the next agent (or the same one) to pick up.
+
+---
 
 ## Quick start
 
 ```bash
-# 1. Configure environment variables (.env)
+# 1. Configure environment variables
 npx collab-memory setup
 
 # 2. Wire Claude Code hooks + MCP into this project
@@ -20,8 +24,6 @@ npx collab-memory migrate
 npx collab-memory dev
 ```
 
-**What each step does:**
-
 | Command | What it does |
 |---|---|
 | `setup` | Interactive prompt for every `.env` variable — Supabase URLs, API keys, app URL |
@@ -29,17 +31,159 @@ npx collab-memory dev
 | `migrate` | Applies all SQL migrations in `drizzle/` including RLS policies and storage bucket policies |
 | `dev` | Starts the Next.js dev server on `http://localhost:3000` |
 
-> **Agent token:** after `dev` is running, sign in, open an org, go to **Org Settings → Agent Tokens → New token**. Then re-run `npx collab-memory hooks-setup` to save it.
+> **Agent token:** after `dev` is running, sign in, open an org, go to **Org Settings → Agent Tokens → New token**. Paste the token when `hooks-setup` asks for it, or re-run `npx collab-memory hooks-setup` at any time.
 
-## Features
+---
 
-- **Auth + multi-tenancy** — magic link / password sign-in via Supabase Auth. Users can create and switch between organisations. Role hierarchy: `owner → admin → member → viewer`.
-- **Notes** — full CRUD with three visibility levels (`private`, `org`, `shared`). Selective per-user share grants with `view` or `edit` permission. Tag attachment.
-- **Versioning + diffs** — every write creates an immutable version snapshot. History page shows who changed what and when. Line-level diff viewer between any two versions.
-- **Search** — full-text search (`tsvector`) across titles and content, tag-prefix search (`#tag` via `pg_trgm`), and filter-only browsing (author, date range, visibility). All paths enforce org boundaries and permission visibility.
-- **File uploads** — signed upload URLs (bytes go browser → Supabase Storage, never through the app server). Signed download URLs with short TTL. Cursor-paginated org file library. Up to 5 attachments per note.
-- **AI summaries** — structured summaries generated with Anthropic Claude (OpenAI fallback). Streamed to the client. User explicitly accepts output before it is saved. Per-user rate limiting.
-- **Audit log** — every auth event, mutation, AI call, permission denial, and failure is written to a persistent `audit_log` table via structured logging.
+## What it is
+
+### For humans
+
+- **Notes** — full CRUD with `private`, `org`, and `shared` visibility. Per-user share grants (`view` / `edit`). Tag attachment.
+- **Versioning + diffs** — every write creates an immutable snapshot. History page shows who changed what and when with a line-level diff between any two versions.
+- **Search** — full-text (`tsvector`), tag-prefix (`#tag` via `pg_trgm`), and filter browsing (author, date range, visibility). All paths enforce org boundaries.
+- **File uploads** — signed upload URLs (bytes go browser → Supabase Storage, never through the app server). Up to 5 attachments per note.
+- **AI summaries** — structured summaries streamed from Anthropic Claude (OpenAI fallback). User explicitly accepts before saving. Per-user rate limiting.
+- **Audit log** — every auth event, mutation, AI call, agent action, permission denial, and failure is written to a persistent `audit_log` table.
+
+### For AI agents
+
+- **Session memory** — each Claude Code session bootstraps as a note in the org. On resume, the last checkpoint is injected as context before the model sees the first prompt.
+- **Semantic recall** — on every user message, the recall hook searches the org's notes and injects the top matches as background context.
+- **Automatic checkpointing** — on every `git commit`, on `PreCompact`, and on `SessionEnd`, the current work summary is appended to the session note as a new version.
+- **Conversation turns** — the full turn-by-turn conversation history is stored with note references, searchable and linkable from the UI.
+- **MCP server** — any MCP-aware client can read and write org notes through the model's tool-call interface. Every call is audited.
+
+### For both
+
+- **Graph explorer** — a Neo4j-backed relationship graph that maps how notes, users, agent sessions, conversation turns, tags, and audit events connect. Hover any timeline event or note card to see a preview. Click through to explore depth, expand neighbors, and navigate directly to the underlying data.
+
+---
+
+## How agent memory works
+
+```
+SessionStart  → bootstrap.js  → POST /agent/bootstrap
+                                 ↳ creates or resumes session note
+                                 ↳ injects last checkpoint + org guidelines as context
+
+UserPromptSubmit → recall.js  → POST /agent/search
+                                 ↳ full-text search across all org notes
+                                 ↳ top-K hits injected as context before the model responds
+
+PostToolUse (git commit) → checkpoint.js → POST /agent/sessions/:id/checkpoint
+                                 ↳ accumulates done/decision/issue items in session state
+
+PostToolUse (mcp__notes-app__*) → event.js → audit_log row (tool, duration, result)
+SubagentStart / SubagentStop    ↗
+
+PreCompact / SessionEnd → checkpoint.js → final snapshot written as a new note version
+```
+
+Each session is a note. Each checkpoint is a version. The full history of what an agent did, decided, and left unfinished is visible in the note's version history — readable by the next agent or any human teammate.
+
+---
+
+## Graph explorer
+
+The graph feature requires a running Neo4j instance. It is fully optional — the app works without it.
+
+```bash
+# Start Neo4j (Docker)
+docker run -d --name neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/yourpassword \
+  neo4j:5
+
+# Add to .env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=yourpassword
+
+npm install
+npm run graph:setup   # create constraints + indexes (once)
+npm run graph:sync    # backfill existing data from Postgres
+```
+
+**Graph commands**
+
+| Command | Description |
+|---|---|
+| `npm run graph:setup` | Create Neo4j uniqueness constraints and indexes (idempotent) |
+| `npm run graph:sync` | Bulk-sync all notes, sessions, and audit events → Neo4j |
+| `npm run graph:sync -- --org=<id>` | Sync a single org |
+| `npm run graph:clear` | Delete all graph data (prompts for confirmation) |
+| `npx collab-memory graph:setup` | Same as above via CLI |
+| `npx collab-memory graph:sync` | Same as above via CLI |
+| `npx collab-memory graph:clear` | Same as above via CLI |
+
+**Graph nodes and relationships**
+
+```
+(User)-[:AUTHORED]->(Note)
+(Note)-[:HAS_TAG]->(Tag)
+(Note)-[:SHARED_WITH {permission}]->(User)
+(AgentSession)-[:SESSION_FOR]->(Note)
+(ConversationTurn)-[:TURN_IN]->(AgentSession)
+(ConversationTurn)-[:REFERENCES]->(Note)      ← from noteRefs JSONB
+(AuditEvent)-[:ACTED_ON]->(Note)
+(User)-[:PERFORMED]->(AuditEvent)
+```
+
+Data is synced lazily on first graph request and can be backfilled in bulk with `graph:sync`. The graph page centers on the requested node after the force simulation settles. Clicking a node shows type-aware details and navigation links. Right-clicking expands its neighborhood inline. New nodes are highlighted with a yellow flash; the last-expanded node stays marked in cyan.
+
+---
+
+## MCP server
+
+The `/mcp` endpoint is a stateless Streamable HTTP MCP server. Connect any MCP-aware client using a `MEMORY_AGENT_TOKEN`.
+
+**Tools**
+
+| Name | Purpose |
+|---|---|
+| `whoami` | Show the bound principal (org + user) |
+| `search_notes` | Full-text + tag/author/date search |
+| `list_recent_notes` | Cursor-paginated recency feed |
+| `get_note` | Full content + version history + shares |
+| `create_note` | Create a note as the bound principal |
+| `update_note` | Replace note content (creates a version) |
+| `append_to_note` | Append content (safe for concurrent writers) |
+| `get_note_versions` | List version history for a note |
+| `get_conversation` | Fetch conversation turns for a session note |
+| `log_turn` | Write a conversation turn |
+| `list_tags` | Discover available tags in the org |
+| `get_org_timeline` | Recent audit events across the org |
+| `list_agent_sessions` | Active agent sessions in the org |
+
+**Resources**
+
+| URI | Purpose |
+|---|---|
+| `notes://recent` | 50 most-recently-updated visible notes |
+| `notes://note/{noteId}` | Single-note template |
+
+**Connecting Claude Code**
+
+```bash
+claude mcp add --transport http notes-app https://your-app.example/mcp \
+  --header "Authorization: Bearer $MEMORY_AGENT_TOKEN"
+```
+
+**Connecting Claude Desktop / other clients**
+
+```json
+{
+  "mcpServers": {
+    "notes-app": {
+      "transport": { "type": "streamable-http", "url": "https://your-app.example/mcp" },
+      "headers": { "Authorization": "Bearer YOUR_MEMORY_AGENT_TOKEN" }
+    }
+  }
+}
+```
+
+---
 
 ## Tech stack
 
@@ -51,10 +195,13 @@ npx collab-memory dev
 | Auth | Supabase Auth (magic link + password) |
 | ORM | Drizzle ORM |
 | Storage | Supabase Storage (private bucket, signed URLs) |
+| Graph | Neo4j 5 (optional) + react-force-graph-2d |
 | AI | Anthropic Claude (primary) + OpenAI (fallback) |
-| Logging | Pino structured logs + persistent audit table |
+| Logging | Pino structured logs + persistent `audit_log` table |
 | UI | Tailwind CSS + shadcn/ui (Radix primitives) |
 | Deployment | Docker + Railway |
+
+---
 
 ## Architecture
 
@@ -62,8 +209,8 @@ npx collab-memory dev
 
 Two independent enforcement layers:
 
-1. **App-level checks** — `requireOrgRole` on every org layout, `assertCanReadNote` / `assertCanWriteNote` / `assertCanShareNote` at every mutation site. These produce good UX errors and early returns.
-2. **Row-level security (RLS)** — Postgres policies in `drizzle/0002_rls_policies.sql` enforce tenant isolation and visibility at the database level regardless of which application code path reaches them. The service-role client (RLS bypass) is used only for admin operations: seed scripts, signed URL generation, trigger-equivalent inserts.
+1. **App-level checks** — `requireOrgRole` on every org layout, `assertCanReadNote` / `assertCanWriteNote` / `assertCanShareNote` at every mutation. These produce good UX errors and early returns.
+2. **Row-level security (RLS)** — Postgres policies in `drizzle/0002_rls_policies.sql` enforce tenant isolation at the database level regardless of which code path reaches them. The service-role client is used only where necessary: seed scripts, signed URL generation.
 
 ### Request flow
 
@@ -79,8 +226,6 @@ Browser
 
 ### Module boundaries
 
-Each feature is a self-contained module with its own lib, pages, and API routes:
-
 ```
 src/lib/
   auth/         ← session, org membership, permission helpers
@@ -88,90 +233,14 @@ src/lib/
   search/       ← FTS, tag-prefix, filter-only browse
   files/        ← signed upload/download, permissions
   ai/           ← prompt construction, provider abstraction, rate limiting
+  graph/        ← Neo4j client, sync service, neighborhood queries
   orgs/         ← org creation, invites, role management
   log/          ← pino logger + audit() writer
   db/           ← Drizzle client, schema definitions
   validation/   ← Result<T, E> envelope, zod helpers
 ```
 
-### Search architecture
-
-Three code paths share the same base conditions (org boundary, visibility predicate, tag/author/date filters):
-
-- `searchByFts(q)` — `plainto_tsquery` against `tsvector` column, ranked by `ts_rank`
-- `searchByTag(#prefix)` — `pg_trgm` similarity against tag names, ordered by similarity
-- `browseFiltered()` — no text query, ordered by `updatedAt DESC` (used when only filters are active)
-
-### AI summary pipeline
-
-```
-User clicks "Generate"
-  → POST /api/ai/notes/[noteId]/summary
-  → assertCanReadNote
-  → rate limit check (in-memory, per user)
-  → fetch note content
-  → build prompt (content delimited, no free interpolation)
-  → stream from Anthropic (OpenAI fallback on error)
-  → client renders streamed markdown
-  → User clicks "Accept"
-  → server action saves to ai_summaries table
-  → audit log entry written
-```
-
-### Versioning model
-
-Every `updateNote` call:
-1. Opens a transaction and `SELECT ... FOR UPDATE` locks the note row
-2. Reads `currentVersion`, computes `currentVersion + 1`
-3. Inserts a new row in `note_versions`
-4. Releases the lock
-
-Concurrent writers are serialised — all writes succeed and receive monotonically increasing version numbers. No stale-edit rejection; version history is append-only.
-
-## Project structure
-
-```
-.
-├── drizzle/                    # SQL migrations (applied in order)
-│   ├── 0000_*.sql              # Base schema
-│   ├── 0001_extensions.sql     # pg_trgm, pg_vector extensions
-│   ├── 0002_rls_policies.sql   # RLS policies + auth trigger
-│   └── 0003_storage_policies.sql
-├── scripts/
-│   ├── db/migrate.ts           # Migration runner
-│   └── seed/                   # 10k-note seed (factories + runner)
-├── src/
-│   ├── app/
-│   │   ├── api/                # Route handlers (search, files, notes, AI)
-│   │   ├── auth/               # Auth callback + sign-out
-│   │   ├── orgs/
-│   │   │   ├── [orgId]/
-│   │   │   │   ├── layout.tsx  # Org auth gate (requireOrgRole)
-│   │   │   │   ├── notes/      # Notes list, note detail, history, summary
-│   │   │   │   ├── search/     # Search page
-│   │   │   │   ├── files/      # File library + upload
-│   │   │   │   └── settings/   # Org settings, member management
-│   │   │   ├── new/            # Create org
-│   │   │   └── invite/[token]/ # Accept invite
-│   │   └── sign-in/
-│   ├── components/
-│   │   ├── org/                # OrgSwitcher
-│   │   └── ui/                 # shadcn primitives
-│   └── lib/
-│       ├── auth/               # session, org, permissions
-│       ├── ai/                 # prompt, provider, rate-limit, schema
-│       ├── db/                 # Drizzle client + schema
-│       ├── files/              # Upload, download, permissions
-│       ├── log/                # Pino logger + audit writer
-│       ├── notes/              # CRUD, diff, history, shares
-│       ├── orgs/               # Create, invite, roles, members
-│       ├── search/             # FTS + filter service
-│       ├── supabase/           # Browser, server, service clients
-│       └── validation/         # Result<T,E> envelope
-├── Dockerfile
-├── railway.toml
-└── .env.example
-```
+---
 
 ## Local setup
 
@@ -180,6 +249,7 @@ Concurrent writers are serialised — all writes succeed and receive monotonical
 - Node.js 20+
 - A [Supabase](https://supabase.com) project (free tier is fine)
 - Anthropic API key (OpenAI key optional — used as fallback)
+- Neo4j 5 (optional — graph features disabled if `NEO4J_URI` is unset)
 
 ### 1. Clone and install
 
@@ -195,8 +265,6 @@ npm install
 cp .env.example .env
 ```
 
-Fill in `.env`:
-
 | Variable | Where to find it |
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Dashboard → Project Settings → API |
@@ -205,6 +273,9 @@ Fill in `.env`:
 | `DATABASE_URL` | Supabase Dashboard → Project Settings → Database → Connection pooler (Transaction mode) |
 | `DIRECT_URL` | Supabase Dashboard → Project Settings → Database → Direct connection |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
+| `NEO4J_URI` | `bolt://localhost:7687` (optional) |
+| `NEO4J_USER` | `neo4j` (optional) |
+| `NEO4J_PASSWORD` | your password (optional) |
 
 ### 3. Run migrations
 
@@ -212,15 +283,13 @@ Fill in `.env`:
 npm run db:migrate
 ```
 
-This applies every `.sql` file in `drizzle/` in lexicographic order. The RLS policies and storage bucket policies are included — no manual SQL required.
-
-> **Note:** `npm run db:migrate` runs the **custom migrator** in `scripts/db/migrate.ts`, not `drizzle-kit migrate`. Drizzle-kit's own migrator only applies entries listed in `drizzle/meta/_journal.json` (i.e. files it generated itself), and would silently skip the hand-written `0001`–`0004_*.sql` files. Always use `npm run db:migrate`.
+Applies every `.sql` file in `drizzle/` in order, including RLS policies and storage bucket policies. Always use this, not `drizzle-kit migrate` — the kit's migrator skips hand-written SQL files not in its journal.
 
 ### 4. Create storage bucket
 
-In Supabase Dashboard → Storage, create a **private** bucket named `notes-files`. The storage policies in `drizzle/0003_storage_policies.sql` are applied by the migration, but the bucket itself must be created manually (Supabase does not support bucket creation via SQL migrations).
+In Supabase Dashboard → Storage, create a **private** bucket named `notes-files`. The storage policies are applied by the migration but the bucket must be created manually.
 
-### 5. Start development server
+### 5. Start the server
 
 ```bash
 npm run dev
@@ -231,271 +300,107 @@ Open [http://localhost:3000](http://localhost:3000).
 ### 6. Seed data (optional)
 
 ```bash
-npm run seed          # Small dev seed (~100 notes across 3 orgs)
+npm run seed          # ~100 notes across 3 orgs
 npm run seed:large    # 10 000 notes across 10 orgs (search stress test)
 ```
 
-The seed creates auth users, org memberships, notes with version history, shared files, and tag distributions designed to exercise every search path.
+---
 
 ## Available scripts
 
 | Script | Description |
 |---|---|
 | `npm run dev` | Start Next.js development server |
-| `npm run build` | Production build (runs TypeScript check) |
+| `npm run build` | Production build |
 | `npm run start` | Start production server |
 | `npm run typecheck` | TypeScript check without building |
 | `npm run lint` | ESLint |
-| `npm run db:generate` | Generate a Drizzle migration from schema changes (writes a new `drizzle/<n>_<name>.sql` and updates `drizzle/meta/_journal.json`). Skip for tables that need RLS hardening — write the SQL by hand instead, matching the convention used by `0001`–`0004`. |
-| `npm run db:migrate` | Custom runner (`scripts/db/migrate.ts`) — applies every `.sql` file under `drizzle/` in order. Use this, not `drizzle-kit migrate`, which would skip the hand-written files. |
-| `npm run db:studio` | Open Drizzle Studio (visual DB browser) |
+| `npm run db:generate` | Generate a Drizzle migration from schema changes |
+| `npm run db:migrate` | Apply all migrations (use this, not `drizzle-kit migrate`) |
+| `npm run db:studio` | Open Drizzle Studio |
 | `npm run seed` | Small dev seed |
 | `npm run seed:large` | 10k-note seed |
+| `npm run graph:setup` | Create Neo4j constraints + indexes |
+| `npm run graph:sync` | Bulk sync Postgres → Neo4j |
+| `npm run graph:clear` | Delete all graph data |
+
+---
 
 ## Agent session logging — setup guide
 
-This section covers everything needed to wire a Claude Code project to the notes app so that every agent session is automatically checkpointed, recalled on resume, and visible in the timeline.
-
-### How it works
+### How hooks work
 
 ```
-SessionStart  → bootstrap.js  → POST /agent/bootstrap
-                                 ↳ creates/resumes a session note
-                                 ↳ injects last checkpoint + org guidelines as context
-
-UserPromptSubmit → recall.js  → POST /agent/search
-                                 ↳ semantic search against notes
-                                 ↳ injects top-K hits as context before the model sees the prompt
-
-PostToolUse (git commit) → checkpoint.js → POST /agent/sessions/:id/checkpoint
-                                 ↳ appends done item to accumulated list in session state
-
-PostToolUse (mcp__notes-app__*) → event.js → POST /agent/sessions/:id/event
-SubagentStart / SubagentStop    ↗           ↳ writes audit_log row (tool, agent, duration)
-
-PreCompact / SessionEnd → checkpoint.js → POST /agent/sessions/:id/checkpoint
-                                 ↳ final snapshot: all accumulated done/decisions/issues
+.claude/hooks/
+  _lib.js        ← shared helpers: state I/O, API client, git detection
+  bootstrap.js   ← SessionStart: create/resume session note, inject checkpoint
+  recall.js      ← UserPromptSubmit: search org notes, inject top-K as context
+  checkpoint.js  ← PostToolUse (git commit), PreCompact, SessionEnd
+  event.js       ← PostToolUse (MCP tools), SubagentStart, SubagentStop
+  log.js         ← manual crediting utility for subagents
 ```
 
-### Prerequisites
+State is written relative to `__dirname` (the hooks directory), not `process.cwd()`. This ensures the state file stays in the main repo even when commands run from a worktree.
 
-- The notes app running and reachable (local or deployed)
-- A service principal registered in the app: one org, one user, one API token
-- Claude Code CLI installed in the project
+### Subagent self-reporting
 
-### Step 1 — Register a service principal
+`PostToolUse` hooks race on the state file when multiple subagents commit concurrently — some items are silently dropped. The fix is to have each subagent call `log.js` immediately after every commit.
 
-Create a user + org in the running app, then generate a `MEMORY_AGENT_TOKEN` via the app's admin interface or directly in the database. The token is bound to a fixed `(orgId, userId)` pair server-side — all agent notes are scoped to that principal.
-
-### Step 2 — Set environment variables
-
-Add these to your shell profile or `.env.local` (do **not** commit):
-
-| Variable | Purpose |
-|---|---|
-| `MEMORY_AGENT_TOKEN` | Bearer token for `/agent/*` and `/mcp` endpoints |
-| `MEMORY_API_URL` | Base URL of the running notes app (default: `http://localhost:3000`) |
-
-The hooks read `MEMORY_API_URL` and `MEMORY_AGENT_TOKEN` from the environment at runtime. If either is unset, hooks fail silently to stderr — the agent session continues unaffected.
-
-### Step 3 — Add `.mcp.json` to the project root
-
-```json
-{
-  "mcpServers": {
-    "notes-app": {
-      "type": "http",
-      "url": "http://localhost:3000/mcp",
-      "headers": {
-        "Authorization": "Bearer ${MEMORY_AGENT_TOKEN}"
-      }
-    }
-  }
-}
+```bash
+node .claude/hooks/log.js done "<exact commit subject>"
 ```
 
-Replace `http://localhost:3000` with your deployed URL. The `${MEMORY_AGENT_TOKEN}` placeholder is expanded by Claude Code from the environment at session start.
+`log.js` resolves the state file from the main repo via `git rev-parse --git-common-dir` so it works from any worktree. Duplicate calls are safe — dedup is automatic.
 
-### Step 4 — Add `.claude/settings.json` to the project
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/bootstrap.js" }] }
-    ],
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/recall.js" }] }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "if": "Bash(git commit *)",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/checkpoint.js" }]
-      },
-      {
-        "matcher": "mcp__notes-app__.*",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/event.js" }]
-      }
-    ],
-    "SubagentStart": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/event.js" }] }
-    ],
-    "SubagentStop": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/event.js" }] }
-    ],
-    "PreCompact": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/checkpoint.js" }] }
-    ],
-    "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/checkpoint.js" }] }
-    ]
-  }
-}
-```
-
-### Step 5 — Copy the hook scripts
-
-Copy the `.claude/hooks/` directory from this repo into the target project. The hooks have no external dependencies beyond Node.js built-ins (`fs`, `child_process`, `os`, `path`). The directory layout must be preserved:
+**Append to every subagent prompt:**
 
 ```
-.claude/
-  hooks/
-    _lib.js          ← shared helpers (state I/O, API client, git, context detection)
-    bootstrap.js     ← SessionStart
-    recall.js        ← UserPromptSubmit
-    checkpoint.js    ← PostToolUse (commit) + PreCompact + SessionEnd
-    event.js         ← PostToolUse (MCP) + SubagentStart + SubagentStop
-    log.js           ← manual crediting utility (see below)
-  state/             ← created automatically at runtime
-  settings.json      ← from Step 4
-```
-
-> **State dir** is resolved relative to the hooks directory (`__dirname`), not `process.cwd()`. This ensures the state file is always in the main repo even when a Bash command starts with `cd <worktree>`.
-
-### Step 6 — Subagents self-report via `log.js done`
-
-`PostToolUse` hook writes race on the session state file when multiple subagents commit concurrently — some items are silently dropped. The fix is to have each subagent call `log.js` itself immediately after every commit.
-
-`log.js` resolves state from the main repo via `git rev-parse --git-common-dir`, so it writes into the correct session regardless of which worktree it runs in. Dedup is automatic — duplicate calls are safe.
-
-#### Boilerplate to append to every subagent prompt
-
-```
-## Reporting
 After every `git commit`, immediately run:
   node .claude/hooks/log.js done "<exact commit subject>"
-Use the exact subject string from the git output — no paraphrasing.
-Do this before moving on to the next task.
+Use the exact subject from the git output. Do this before moving on.
 ```
 
-#### Orchestrator: log decisions and issues
+**Orchestrator logging:**
 
 ```bash
 node .claude/hooks/log.js decision "Chose X over Y because Z"
-node .claude/hooks/log.js issue "Race condition in file upload handler"
+node .claude/hooks/log.js issue "Race condition in upload handler"
 ```
 
-These surface in the final checkpoint at `SessionEnd` / `PreCompact`.
-
-### Reliability summary
+### Reliability matrix
 
 | Scenario | Auto via hook | Needs `log.js done` |
 |---|---|---|
 | Single agent, sequential commits | ✅ | No |
-| Parallel non-worktree subagents | Partial (race drops items) | Subagent self-reports |
-| Parallel worktree subagents | Partial (race drops items) | Subagent self-reports |
+| Parallel subagents (any worktree) | Partial — race drops items | Yes |
 | Decisions / issues | Never | Orchestrator logs manually |
 
-## Agent integrations
-
-The app exposes two Bearer-token-authed surfaces for agentic use, both keyed off the same `MEMORY_AGENT_TOKEN` and bound to a single (`MEMORY_AGENT_ORG_ID`, `MEMORY_AGENT_USER_ID`) service principal.
-
-### Claude Code hooks
-
-The `.claude/hooks/` directory wires Claude Code lifecycle events into the notes app so every agent session is automatically checkpointed as a note.
-
-| Hook | Event | What it does |
-|---|---|---|
-| `session-start.js` | `SessionStart` | Bootstraps or resumes a session note; injects the last checkpoint as context |
-| `checkpoint.js` | `Stop` / `SubagentStop` | Appends a checkpoint (done/next/issues/decisions) to the session note via `update_note` |
-| `_lib.js` | — | Shared helpers: state dir resolution, subagent context extraction, tool-response parsing |
-
-**State dir** is resolved relative to `__dirname` (the hooks directory), not `process.cwd()`. This matters when a Bash tool invocation starts with `cd <worktree>` — without the fix, the hook would write its state file into the worktree instead of the main repo's `.claude/state/`.
-
-**Tool-response parsing** (`extractOutput` in `_lib.js`) handles all shapes Claude Code may emit: `string`, `{ stdout }`, `{ output }`, and `{ content: [{ type: "text", text }] }`.
-
-### Memory bridge — `/agent/*`
-
-`POST /agent/bootstrap` and `POST /agent/sessions/:id/checkpoint`. Used by the Claude Code hooks in [.claude/hooks/](.claude/hooks/) to persist agent session state as notes + versions. See [NOTES.md](NOTES.md) for the design log.
-
-### MCP server — `/mcp`
-
-A Model Context Protocol server (Streamable HTTP, stateless) that lets any MCP-aware client read and write the org's notes through the model's tool-call interface.
-
-**Tools**
-
-| Name | Purpose |
-|---|---|
-| `whoami` | Show the bound principal (org + user) |
-| `search_notes` | Full-text + tag/author/date search |
-| `list_recent_notes` | Cursor-paginated recency feed |
-| `get_note` | Full content + history + shares for one note |
-| `create_note` | Author a new note as the bound principal |
-
-**Resources**
-
-| URI | Purpose |
-|---|---|
-| `notes://recent` | The 50 most-recently-updated visible notes |
-| `notes://note/{noteId}` | Single-note template with `list` support |
-
-**Connecting Claude Code (CLI)**
-
-```bash
-claude mcp add --transport http notes-app https://your-app.example/mcp \
-  --header "Authorization: Bearer $MEMORY_AGENT_TOKEN"
-```
-
-**Connecting Claude Desktop / other MCP clients**
-
-Add to the client's MCP config:
-
-```json
-{
-  "mcpServers": {
-    "notes-app": {
-      "transport": { "type": "streamable-http", "url": "https://your-app.example/mcp" },
-      "headers": { "Authorization": "Bearer YOUR_MEMORY_AGENT_TOKEN" }
-    }
-  }
-}
-```
-
-Stateless mode means each request is independent — the deployment can scale horizontally without sticky sessions. Every tool/resource call writes an `mcp.tool.call` (or `mcp.resource.read`) row to `audit_log`, indexed by `(orgId, userId)`, with `durationMs` in metadata.
+---
 
 ## Deployment (Railway)
 
-The app ships as a Docker container. `railway.toml` configures the build and deploy settings.
+1. Push to GitHub and connect to a Railway project
+2. Add all variables from `.env.example` to the Railway service
+3. Railway builds from `Dockerfile` and deploys on push to `main`
+4. Set `NEXT_PUBLIC_APP_URL` to your Railway domain
 
-1. Push the repo to GitHub
-2. Connect the repo to a Railway project
-3. Add all environment variables from `.env.example` to the Railway service
-4. Railway builds from the `Dockerfile` and deploys automatically on push to `main`
-5. Set `NEXT_PUBLIC_APP_URL` to your Railway-generated domain
+`GET /readyz` returns `{"ok":true}` — used by Railway's health check.
 
-The `/healthz` endpoint returns `{"ok":true}` and is used by Railway's health check before traffic is routed to the new deployment.
+---
 
 ## Key design decisions
 
 **Why Supabase RLS instead of app-only checks?**
-App-level permission checks can be bypassed by bugs, forgotten middleware, or direct API calls. RLS enforces tenant isolation and visibility at the database layer regardless of which code path reaches it. The two layers are complementary: app checks give good UX errors; RLS is the actual security boundary.
+App-level checks can be bypassed by bugs or forgotten middleware. RLS enforces tenant isolation at the database layer regardless of which code path reaches it. The two layers are complementary: app checks give good UX errors; RLS is the actual security boundary.
 
-**Why keyset (cursor) pagination instead of offset?**
-`OFFSET n` requires the database to scan and discard the first n rows on every request — O(n) work that grows with page number. Cursor pagination (`WHERE created_at < $cursor`) uses an index seek regardless of page depth, making page 1 and page 1000 equally fast.
+**Why keyset pagination instead of offset?**
+`OFFSET n` requires the database to scan and discard n rows on every request. Cursor pagination uses an index seek — page 1 and page 1000 are equally fast.
 
 **Why `SELECT FOR UPDATE` for versioning?**
-Concurrent writes to the same note without a lock could produce duplicate version numbers via a read-modify-write race. `FOR UPDATE` serialises writers at the row level — all writes succeed and receive monotonically increasing versions. The overhead is acceptable because concurrent edits to the same note are rare.
+Concurrent writes without a lock produce duplicate version numbers via a read-modify-write race. `FOR UPDATE` serialises writers at the row level — all writes succeed with monotonically increasing versions.
 
-**Why direct `public.users` insert in the seed instead of waiting for the trigger?**
-The `on_auth_user_created` trigger mirrors auth users into `public.users` for the application path. In hosted Supabase, the auth service commits `auth.users` on its own connection; trigger propagation timing is not guaranteed to be visible to an external seed connection within any fixed window. The seed has superuser access (bypasses RLS) and knows all user data — inserting directly with `ON CONFLICT DO NOTHING` is deterministic and idempotent.
+**Why lazy Neo4j sync instead of eager writes?**
+Graph data is derived from Postgres — it is always recoverable via `graph:sync`. Writing to Neo4j on every mutation would couple the graph to the hot write path. Lazy sync on first graph request keeps mutations fast; the bulk backfill covers everything else.
+
+**Why a separate graph store instead of recursive SQL CTEs?**
+Multi-hop relationship traversal (2–4 hops across 6 node types) generates complex recursive queries that are hard to tune and harder to read. Neo4j's Cypher pattern matching expresses the same intent in one line and is natively optimised for graph traversal.
