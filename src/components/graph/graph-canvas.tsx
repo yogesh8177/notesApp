@@ -40,12 +40,13 @@ interface GraphCanvasProps {
   data: GraphData;
   orgId: string;
   centerNodeId?: string;
+  expandedNodeId?: string | null;
   newNodeIds?: Set<string>;
   onNodeClick?: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void;
 }
 
-export function GraphCanvas({ data, orgId: _orgId, centerNodeId, newNodeIds, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
+export function GraphCanvas({ data, orgId: _orgId, centerNodeId, expandedNodeId, newNodeIds, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fgRef = useRef<FGInstance>(null);
   const centeredRef = useRef(false);
@@ -54,6 +55,8 @@ export function GraphCanvas({ data, orgId: _orgId, centerNodeId, newNodeIds, onN
   // without triggering a graphData reference change on every highlight update.
   const newNodeIdsRef = useRef<Set<string>>(newNodeIds ?? new Set());
   useEffect(() => { newNodeIdsRef.current = newNodeIds ?? new Set(); }, [newNodeIds]);
+  const expandedNodeIdRef = useRef<string | null>(expandedNodeId ?? null);
+  useEffect(() => { expandedNodeIdRef.current = expandedNodeId ?? null; }, [expandedNodeId]);
 
   // Reset centering when centerNodeId changes (new page load / explore-as-center)
   useEffect(() => { centeredRef.current = false; }, [centerNodeId]);
@@ -147,7 +150,16 @@ export function GraphCanvas({ data, orgId: _orgId, centerNodeId, newNodeIds, onN
           const x = n.x ?? 0;
           const y = n.y ?? 0;
 
-          // Highlight ring for newly expanded nodes
+          // Persistent cyan ring on the node that was expanded
+          if (expandedNodeIdRef.current === n.id) {
+            ctx.beginPath();
+            ctx.arc(x, y, 10, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#06b6d4";
+            ctx.lineWidth = 2.5 / globalScale;
+            ctx.stroke();
+          }
+
+          // Temporary yellow flash for newly discovered nodes
           if (newNodeIdsRef.current.has(n.id)) {
             ctx.beginPath();
             ctx.arc(x, y, 9, 0, 2 * Math.PI);

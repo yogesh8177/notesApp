@@ -171,9 +171,11 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
   const [loading, setLoading] = useState(false);
   const [expanding, setExpanding] = useState(false);
   const [newNodeIds, setNewNodeIds] = useState<Set<string>>(new Set());
+  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
 
   const expandNode = useCallback(async (node: GraphNode) => {
     setExpanding(true);
+    setExpandedNodeId(node.id);
     try {
       const res = await fetch(
         `/api/graph/node/${node.type}/${node.id}?depth=${depth}&limit=50&orgId=${orgId}`,
@@ -260,6 +262,7 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
           data={graphData}
           orgId={orgId}
           centerNodeId={graphData.centerNodeId}
+          expandedNodeId={expandedNodeId}
           newNodeIds={newNodeIds}
           onNodeClick={handleNodeClick}
           onNodeDoubleClick={handleNodeDoubleClick}
