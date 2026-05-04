@@ -86,7 +86,7 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
           <Row label="Repo" value={String(p.repo ?? "—")} />
           <Row label="Branch" value={String(p.branch ?? "—")} />
           <Row label="Created" value={formatTs(p.createdAt)} />
-          {p.noteId && (<>
+          {!!p.noteId && (<>
             <NavLink href={`/orgs/${orgId}/notes/${String(p.noteId)}/conversation`}>
               View conversation →
             </NavLink>
@@ -102,7 +102,7 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
           <Row label="Role" value={String(p.role ?? "—")} />
           <Row label="Turn" value={`#${p.turnIndex ?? "?"}`} />
           <Row label="Created" value={formatTs(p.createdAt)} />
-          {p.contentPreview && (
+          {!!p.contentPreview && (
             <div>
               <p className="mb-0.5 text-muted-foreground">Preview</p>
               <p className="rounded bg-muted p-1.5 text-[11px] leading-relaxed line-clamp-4">
@@ -110,7 +110,7 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
               </p>
             </div>
           )}
-          {p.sessionNoteId && (
+          {!!p.sessionNoteId && (
             <NavLink href={`/orgs/${orgId}/notes/${String(p.sessionNoteId)}/conversation#turn-${String(p.turnIndex ?? "")}`}>
               Jump to turn #{String(p.turnIndex ?? "?")} →
             </NavLink>
@@ -151,7 +151,6 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
           </div>
         );
       })()}
-      )}
 
       {node.type === "Tag" && (
         <div className="space-y-1.5">

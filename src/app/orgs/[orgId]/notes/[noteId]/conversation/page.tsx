@@ -77,7 +77,7 @@ export default async function ConversationPage({
           {chronological.map((turn) => {
             const isUser = turn.role === "user";
             return (
-              <li key={turn.id}>
+              <li key={turn.id} id={`turn-${turn.turnIndex}`}>
                 <div
                   className={`rounded-md border p-3 text-sm ${
                     isUser
