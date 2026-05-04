@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { assertCanReadNote } from "@/lib/auth/permissions";
 import { getConversation } from "@/lib/agent/conversation";
+import { listAgentSessions } from "@/lib/agent/queries";
 import { SectionCard, formatTimestamp } from "../../components";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MessageSquare, User, Bot, FileText } from "lucide-react";
+import { MessageSquare, User, Bot, FileText, GitGraph } from "lucide-react";
 
 export default async function ConversationPage({
   params,
@@ -26,6 +28,10 @@ export default async function ConversationPage({
   }
 
   const { turns, summaries } = await getConversation(noteId, 100);
+
+  // Find the agent session for this note (first match)
+  const sessions = await listAgentSessions(orgId, 50);
+  const session = sessions.find((s) => s.noteId === noteId) ?? null;
 
   if (turns.length === 0) {
     return (
@@ -51,6 +57,18 @@ export default async function ConversationPage({
 
   return (
     <div className="space-y-4">
+      {session && (
+        <div className="flex justify-end">
+          <Link
+            href={`/orgs/${orgId}/graph/AgentSession/${session.id}`}
+            className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="View session in graph"
+          >
+            <GitGraph className="h-3.5 w-3.5" />
+            View in Graph
+          </Link>
+        </div>
+      )}
       <SectionCard
         title="Conversation"
         description={`${turns.length} turns captured · ${summaries.length} auto-summaries`}
