@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { log } from "@/lib/log";
 import { ok, err, toResponse } from "@/lib/validation/result";
 import { syncNode } from "@/lib/graph/sync";
-import { getNodeNeighborhood } from "@/lib/graph/queries";
+import { getNodeNeighborhood, type NeighborhoodOptions } from "@/lib/graph/queries";
 import { getDriver } from "@/lib/graph/client";
 import type { GraphNodeType } from "@/lib/graph/types";
 
@@ -21,6 +21,8 @@ const querySchema = z.object({
   depth: z.coerce.number().int().min(1).max(4).optional().default(2),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   orgId: z.string().uuid().optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
 });
 
 export async function GET(
@@ -48,7 +50,8 @@ export async function GET(
     return toResponse(err("VALIDATION", "Invalid query parameters"));
   }
 
-  const { depth, limit, orgId } = parsed.data;
+  const { depth, limit, orgId, from, to } = parsed.data;
+  const dateOpts: NeighborhoodOptions = { from, to };
 
   if (!getDriver()) {
     return NextResponse.json(
@@ -65,7 +68,7 @@ export async function GET(
       );
     }
 
-    const data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit);
+    const data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
 
     if (!data) {
       return NextResponse.json(

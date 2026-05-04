@@ -203,13 +203,22 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
   const [expanding, setExpanding] = useState(false);
   const [newNodeIds, setNewNodeIds] = useState<Set<string>>(new Set());
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  function buildQuery(overrides: Record<string, string | number> = {}) {
+    const p = new URLSearchParams({ orgId, depth: String(depth), limit: "50", ...Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, String(v)])) });
+    if (fromDate) p.set("from", new Date(fromDate).toISOString());
+    if (toDate) { const d = new Date(toDate); d.setHours(23, 59, 59, 999); p.set("to", d.toISOString()); }
+    return p.toString();
+  }
 
   const expandNode = useCallback(async (node: GraphNode) => {
     setExpanding(true);
     setExpandedNodeId(node.id);
     try {
       const res = await fetch(
-        `/api/graph/node/${node.type}/${node.id}?depth=${depth}&limit=50&orgId=${orgId}`,
+        `/api/graph/node/${node.type}/${node.id}?${buildQuery()}`,
         { cache: "no-store" }
       );
       const payload = (await res.json()) as { ok: boolean; data?: GraphData };
@@ -246,7 +255,21 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/graph/node/${centerType}/${centerId}?depth=${newDepth}&limit=50&orgId=${orgId}`,
+        `/api/graph/node/${centerType}/${centerId}?${buildQuery({ depth: newDepth })}`,
+        { cache: "no-store" }
+      );
+      const payload = (await res.json()) as { ok: boolean; data?: GraphData };
+      if (payload.ok && payload.data) setGraphData(payload.data);
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDateFilter() {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/graph/node/${centerType}/${centerId}?${buildQuery()}`,
         { cache: "no-store" }
       );
       const payload = (await res.json()) as { ok: boolean; data?: GraphData };
@@ -275,7 +298,7 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
           </div>
         )}
 
-        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 rounded-md border bg-background/90 px-3 py-1.5 shadow">
+        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 rounded-md border bg-background/90 px-3 py-1.5 shadow flex-wrap">
           <label className="text-xs font-medium text-muted-foreground">Depth</label>
           <input
             type="range" min={1} max={4} value={depth}
@@ -283,6 +306,33 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
             className="h-1 w-20 accent-primary"
           />
           <span className="w-4 text-center text-xs font-medium">{depth}</span>
+          <div className="h-3 w-px bg-border" />
+          <label className="text-xs font-medium text-muted-foreground">From</label>
+          <input
+            type="date" value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="rounded border bg-background px-1.5 py-0.5 text-xs"
+          />
+          <label className="text-xs font-medium text-muted-foreground">To</label>
+          <input
+            type="date" value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="rounded border bg-background px-1.5 py-0.5 text-xs"
+          />
+          <button
+            onClick={() => void handleDateFilter()}
+            className="rounded bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Apply
+          </button>
+          {(fromDate || toDate) && (
+            <button
+              onClick={() => { setFromDate(""); setToDate(""); void handleDateFilter(); }}
+              className="text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         <div className="absolute bottom-3 right-3 z-10 rounded-md border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow">
