@@ -4,8 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { log } from "@/lib/log";
 import { ok, err, toResponse } from "@/lib/validation/result";
 import { syncNode } from "@/lib/graph/sync";
-import { getNodeNeighborhood, type NeighborhoodOptions } from "@/lib/graph/queries";
-import { getDriver } from "@/lib/graph/client";
+import { getNodeNeighborhood, isStale, type NeighborhoodOptions } from "@/lib/graph/queries";
+import { getDriver, ensureIndexes } from "@/lib/graph/client";
 import type { GraphNodeType } from "@/lib/graph/types";
 
 const VALID_TYPES: GraphNodeType[] = [
@@ -60,15 +60,23 @@ export async function GET(
     );
   }
 
+  // Ensure indexes exist — no-op after first success, fire-and-forget
+  void ensureIndexes();
+
   try {
     let data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
 
-    // Only sync when the node is absent — avoids a Postgres+Neo4j write on every request
     if (!data && orgId) {
+      // Node missing from Neo4j — blocking sync then re-fetch
       await syncNode(type as GraphNodeType, id, orgId).catch((e) =>
         log.warn({ e, type, id }, "graph.node.sync.error")
       );
       data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
+    } else if (data && isStale(data, id) && orgId) {
+      // Node present but stale — background re-sync so response stays fast
+      syncNode(type as GraphNodeType, id, orgId).catch((e) =>
+        log.warn({ e, type, id }, "graph.node.background_sync.error")
+      );
     }
 
     if (!data) {
