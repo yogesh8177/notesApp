@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { audit } from "@/lib/log/audit";
 import { log } from "@/lib/log";
+import { syncNode } from "@/lib/graph/sync";
 import { compactCheckpoints } from "@/lib/ai/compact";
 import type { AgentPrincipal } from "./auth";
 import type { BootstrapInput, CheckpointInput } from "./schemas";
@@ -149,7 +150,7 @@ export async function bootstrap(
 ): Promise<BootstrapResult> {
   const { orgId, userId } = principal;
 
-  const noteId = await db.transaction(async (tx) => {
+  const { noteId, sessionId } = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ id: agentSessions.id, noteId: agentSessions.noteId })
       .from(agentSessions)
@@ -168,7 +169,7 @@ export async function bootstrap(
         .update(agentSessions)
         .set({ lastSeenAt: new Date() })
         .where(eq(agentSessions.id, existing.id));
-      return existing.noteId;
+      return { noteId: existing.noteId, sessionId: existing.id };
     }
 
     const title = `Agent: ${input.repo} @ ${input.branch}`;
@@ -195,15 +196,18 @@ export async function bootstrap(
       changeSummary: `agent:${input.agentId} bootstrap (${input.source ?? "startup"})`,
     });
 
-    await tx.insert(agentSessions).values({
-      orgId,
-      noteId: createdNote.id,
-      agentId: input.agentId,
-      repo: input.repo,
-      branch: input.branch,
-    });
+    const [createdSession] = await tx
+      .insert(agentSessions)
+      .values({
+        orgId,
+        noteId: createdNote.id,
+        agentId: input.agentId,
+        repo: input.repo,
+        branch: input.branch,
+      })
+      .returning({ id: agentSessions.id });
 
-    return createdNote.id;
+    return { noteId: createdNote.id, sessionId: createdSession.id };
   });
 
   await audit({
@@ -224,6 +228,8 @@ export async function bootstrap(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+
+  void syncNode("AgentSession", sessionId, orgId);
 
   // "clear" = user ran /clear; skip everything except guidelines (fresh window).
   // anything else = inject checkpoint, epochs, and recent tail turns for orientation.
@@ -385,6 +391,7 @@ export async function checkpoint(
     userAgent: meta.userAgent,
   });
 
+  void syncNode("Note", sessionNoteId, orgId);
   // Fire-and-forget: auto-compact every EPOCH_SIZE versions
   void maybeCompactEpoch(orgId, sessionNoteId, result.version);
 
