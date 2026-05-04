@@ -237,7 +237,7 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
     } catch { /* ignore */ } finally {
       setExpanding(false);
     }
-  }, [depth, orgId]);
+  }, [depth, orgId, fromDate, toDate]);
 
   // Single click → select + show details only
   function handleNodeClick(node: GraphNode) {
