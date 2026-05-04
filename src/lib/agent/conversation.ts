@@ -3,7 +3,7 @@ import { db } from "@/lib/db/client";
 import { conversationTurns, conversationSummaries, notes } from "@/lib/db/schema";
 import { compactCheckpoints } from "@/lib/ai/compact";
 import { log } from "@/lib/log";
-import { syncNode } from "@/lib/graph/sync";
+import { enqueueSync } from "@/lib/graph/queue";
 
 const SUMMARY_WINDOW = 10;
 
@@ -81,7 +81,7 @@ export async function addTurn(opts: {
   if (!row) return { turnIndex: -1 }; // idempotent skip — duplicate hook fire
 
   void maybeCompactConversation(opts.orgId, opts.sessionNoteId, row.turnIndex);
-  void syncNode("ConversationTurn", row.id, opts.orgId);
+  void enqueueSync("ConversationTurn", row.id, opts.orgId);
 
   return { turnIndex: row.turnIndex };
 }

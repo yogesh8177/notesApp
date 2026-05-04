@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { assertCanReadNote, assertCanWriteNote, getNotePermission } from "@/lib/auth/permissions";
 import { audit } from "@/lib/log/audit";
-import { syncNode, deleteNode } from "@/lib/graph/sync";
+import { enqueueSync, enqueueDelete } from "@/lib/graph/queue";
 import { NotesError } from "./errors";
 import type { NoteCreateInput, NotesListQuery, NoteUpdateInput } from "./schemas";
 import {
@@ -288,6 +288,7 @@ export async function createNote(input: NoteCreateInput, userId: string) {
       changedBy: userId,
       changeSummary: input.changeSummary ?? "Initial version",
     });
+    await enqueueSync("Note", created.id, input.orgId, tx);
 
     return created;
   });
@@ -300,8 +301,6 @@ export async function createNote(input: NoteCreateInput, userId: string) {
     resourceId: note.id,
     metadata: { visibility: note.visibility, tagCount: tagNames.length },
   });
-
-  void syncNode("Note", note.id, note.orgId);
 
   const detail = await getNoteDetailForUser(note.id, userId);
   return detail.note;
@@ -351,6 +350,7 @@ export async function updateNote(noteId: string, input: NoteUpdateInput, userId:
       changedBy: userId,
       changeSummary: input.changeSummary ?? null,
     });
+    await enqueueSync("Note", noteId, current.orgId, tx);
 
     return rows;
   });
@@ -365,8 +365,6 @@ export async function updateNote(noteId: string, input: NoteUpdateInput, userId:
     resourceId: noteId,
     metadata: { visibility: updated.visibility, changeSummary: input.changeSummary ?? null },
   });
-
-  void syncNode("Note", noteId, updated.orgId);
 
   const detail = await getNoteDetailForUser(noteId, userId);
   return detail.note;
@@ -385,6 +383,7 @@ export async function deleteNote(noteId: string, userId: string) {
       .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
     await tx.delete(noteTags).where(eq(noteTags.noteId, noteId));
     await tx.delete(noteShares).where(eq(noteShares.noteId, noteId));
+    await enqueueDelete("Note", noteId, note.orgId, tx);
   });
 
   await audit({
@@ -394,6 +393,4 @@ export async function deleteNote(noteId: string, userId: string) {
     resourceType: "note",
     resourceId: noteId,
   });
-
-  void deleteNode("Note", noteId);
 }

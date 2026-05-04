@@ -10,7 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { audit } from "@/lib/log/audit";
 import { log } from "@/lib/log";
-import { syncNode } from "@/lib/graph/sync";
+import { enqueueSync } from "@/lib/graph/queue";
 import { compactCheckpoints } from "@/lib/ai/compact";
 import type { AgentPrincipal } from "./auth";
 import type { BootstrapInput, CheckpointInput } from "./schemas";
@@ -169,6 +169,7 @@ export async function bootstrap(
         .update(agentSessions)
         .set({ lastSeenAt: new Date() })
         .where(eq(agentSessions.id, existing.id));
+      await enqueueSync("AgentSession", existing.id, orgId, tx);
       return { noteId: existing.noteId, sessionId: existing.id };
     }
 
@@ -207,6 +208,7 @@ export async function bootstrap(
       })
       .returning({ id: agentSessions.id });
 
+    await enqueueSync("AgentSession", createdSession.id, orgId, tx);
     return { noteId: createdNote.id, sessionId: createdSession.id };
   });
 
@@ -228,8 +230,6 @@ export async function bootstrap(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-
-  void syncNode("AgentSession", sessionId, orgId);
 
   // "clear" = user ran /clear; skip everything except guidelines (fresh window).
   // anything else = inject checkpoint, epochs, and recent tail turns for orientation.
@@ -355,6 +355,7 @@ export async function checkpoint(
         ),
       );
 
+    await enqueueSync("Note", note.id, orgId, tx);
     return { kind: "ok" as const, version: nextVersion };
   });
 
@@ -391,7 +392,6 @@ export async function checkpoint(
     userAgent: meta.userAgent,
   });
 
-  void syncNode("Note", sessionNoteId, orgId);
   // Fire-and-forget: auto-compact every EPOCH_SIZE versions
   void maybeCompactEpoch(orgId, sessionNoteId, result.version);
 
