@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphData, GraphNode } from "@/lib/graph/types";
 
 // Dynamic import to avoid SSR issues with canvas APIs
@@ -44,6 +44,10 @@ interface GraphCanvasProps {
 export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  // Ref so the canvas paint callback always sees current highlighted IDs
+  // without triggering a graphData reference change on every highlight update.
+  const newNodeIdsRef = useRef<Set<string>>(newNodeIds ?? new Set());
+  useEffect(() => { newNodeIdsRef.current = newNodeIds ?? new Set(); }, [newNodeIds]);
 
   useEffect(() => {
     function update() {
@@ -60,7 +64,9 @@ export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNo
     return () => observer.disconnect();
   }, []);
 
-  const graphData = {
+  // Memoised so ForceGraph2D only sees a new object when data actually changes,
+  // not on every parent re-render (e.g. selectedNode, newNodeIds updates).
+  const graphData = useMemo(() => ({
     nodes: data.nodes.map((n) => ({
       id: n.id,
       type: n.type,
@@ -72,7 +78,7 @@ export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNo
       target: l.target,
       type: l.type,
     })) as ForceLink[],
-  };
+  }), [data]);
 
   function toGraphNode(node: ForceNode): GraphNode {
     return { id: node.id, type: node.type as GraphNode["type"], label: node.label, properties: node.properties };
@@ -122,7 +128,7 @@ export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNo
           const y = n.y ?? 0;
 
           // Highlight ring for newly expanded nodes
-          if (newNodeIds?.has(n.id)) {
+          if (newNodeIdsRef.current.has(n.id)) {
             ctx.beginPath();
             ctx.arc(x, y, 9, 0, 2 * Math.PI);
             ctx.strokeStyle = "#facc15";

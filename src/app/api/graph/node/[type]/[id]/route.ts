@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { log } from "@/lib/log";
-import { audit } from "@/lib/log/audit";
 import { ok, err, toResponse } from "@/lib/validation/result";
 import { syncNode } from "@/lib/graph/sync";
 import { getNodeNeighborhood } from "@/lib/graph/queries";
@@ -72,15 +71,6 @@ export async function GET(
         { status: 503 }
       );
     }
-
-    await audit({
-      action: "graph.node.view",
-      orgId: orgId ?? null,
-      userId: user.id,
-      resourceType: type,
-      resourceId: id,
-      metadata: { depth, limit, nodeCount: data.nodes.length },
-    });
 
     log.info(
       { type, id, depth, limit, nodeCount: data.nodes.length },
