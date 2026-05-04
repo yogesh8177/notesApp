@@ -7,6 +7,7 @@ import { db } from "@/lib/db/client";
 import { noteShares, notes } from "@/lib/db/schema";
 import { assertCanShareNote } from "@/lib/auth/permissions";
 import { audit } from "@/lib/log/audit";
+import { enqueueSync } from "@/lib/graph/queue";
 import { NotesError } from "./errors";
 import type { NoteShareInput } from "./schemas";
 import { getNoteDetailForUser } from "./crud";
@@ -63,6 +64,7 @@ export async function upsertNoteShare(noteId: string, input: NoteShareInput, use
         changeSummary: "Changed visibility to shared",
       });
     }
+    await enqueueSync("Note", noteId, detail.orgId, tx);
   });
 
   await audit({
@@ -91,7 +93,10 @@ export async function removeNoteShare(noteId: string, shareId: string, userId: s
   }
 
   const { note } = await getNoteDetailForUser(noteId, userId);
-  await db.delete(noteShares).where(eq(noteShares.id, shareId));
+  await db.transaction(async (tx) => {
+    await tx.delete(noteShares).where(eq(noteShares.id, shareId));
+    await enqueueSync("Note", noteId, note.orgId, tx);
+  });
 
   await audit({
     action: "note.unshare",

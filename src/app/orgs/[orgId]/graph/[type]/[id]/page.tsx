@@ -3,9 +3,9 @@ import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { getDriver } from "@/lib/graph/client";
+import { getDriver, ensureIndexes } from "@/lib/graph/client";
 import { syncNode } from "@/lib/graph/sync";
-import { getNodeNeighborhood } from "@/lib/graph/queries";
+import { getNodeNeighborhood, isStale } from "@/lib/graph/queries";
 import type { GraphNodeType } from "@/lib/graph/types";
 import { GraphPageClient } from "./graph-page-client";
 
@@ -37,6 +37,7 @@ export default async function GraphPage({
 }) {
   const { orgId, type, id } = await params;
   await requireUser(`/orgs/${orgId}/graph/${type}/${id}`);
+  void ensureIndexes();
 
   if (!VALID_TYPES.includes(type as GraphNodeType)) {
     return (
@@ -106,9 +107,9 @@ NEO4J_PASSWORD=your-password`}
     );
   }
 
-  // Fetch first; only sync if the node is missing from Neo4j
+  // Fetch first; sync if missing or stale (blocking — this is SSR, data must be fresh)
   let initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50);
-  if (!initialData) {
+  if (!initialData || isStale(initialData, id)) {
     await syncNode(type as GraphNodeType, id, orgId).catch(() => null);
     initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50);
   }
