@@ -37,6 +37,7 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
   onExpand: () => void;
   expanding: boolean;
 }) {
+  const router = useRouter();
   const p = node.properties;
 
   const typeColor: Record<string, string> = {
@@ -66,7 +67,10 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
           <Row label="Updated" value={formatTs(p.updatedAt)} />
           <Row label="Created" value={formatTs(p.createdAt)} />
           <NavLink href={`/orgs/${orgId}/notes/${node.id}`}>Open note →</NavLink>
-          <NavLink href={`/orgs/${orgId}/notes/${node.id}/timeline`}>View timeline →</NavLink>
+          <NavLink href={`/orgs/${orgId}/notes/${node.id}/history`}>
+            Version history (v{String(p.currentVersion ?? "?")}) →
+          </NavLink>
+          <NavLink href={`/orgs/${orgId}/notes/${node.id}/timeline`}>Note timeline →</NavLink>
         </div>
       )}
 
@@ -82,11 +86,14 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
           <Row label="Repo" value={String(p.repo ?? "—")} />
           <Row label="Branch" value={String(p.branch ?? "—")} />
           <Row label="Created" value={formatTs(p.createdAt)} />
-          {p.noteId && (
+          {p.noteId && (<>
             <NavLink href={`/orgs/${orgId}/notes/${String(p.noteId)}/conversation`}>
               View conversation →
             </NavLink>
-          )}
+            <NavLink href={`/orgs/${orgId}/notes/${String(p.noteId)}/dashboard`}>
+              Tool call dashboard →
+            </NavLink>
+          </>)}
         </div>
       )}
 
@@ -104,20 +111,46 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
             </div>
           )}
           {p.sessionNoteId && (
-            <NavLink href={`/orgs/${orgId}/notes/${String(p.sessionNoteId)}/conversation`}>
-              Go to conversation →
+            <NavLink href={`/orgs/${orgId}/notes/${String(p.sessionNoteId)}/conversation#turn-${String(p.turnIndex ?? "")}`}>
+              Jump to turn #{String(p.turnIndex ?? "?")} →
             </NavLink>
           )}
         </div>
       )}
 
-      {node.type === "AuditEvent" && (
-        <div className="space-y-1.5">
-          <Row label="Action" value={String(p.action ?? "—")} />
-          <Row label="Resource" value={String(p.resourceType ?? "—")} />
-          <Row label="When" value={formatTs(p.createdAt)} />
-          <NavLink href={`/orgs/${orgId}/timeline`}>View in timeline →</NavLink>
-        </div>
+      {node.type === "AuditEvent" && (() => {
+        const action = String(p.action ?? "");
+        const resId = p.resourceId ? String(p.resourceId) : null;
+        const isNoteMutation = action.startsWith("note.");
+        const isToolCall = action.includes("tool") || action.includes("agent.event");
+        const isNoteResource = p.resourceType === "note" && resId;
+        return (
+          <div className="space-y-1.5">
+            <Row label="Action" value={action || "—"} />
+            <Row label="Resource" value={String(p.resourceType ?? "—")} />
+            <Row label="When" value={formatTs(p.createdAt)} />
+            {isNoteResource && (
+              <NavLink href={`/orgs/${orgId}/notes/${resId}`}>Open note →</NavLink>
+            )}
+            {isNoteResource && isNoteMutation && (
+              <NavLink href={`/orgs/${orgId}/notes/${resId}/history`}>
+                Note version history →
+              </NavLink>
+            )}
+            {isNoteResource && isToolCall && (
+              <NavLink href={`/orgs/${orgId}/notes/${resId}/dashboard`}>
+                Tool call dashboard →
+              </NavLink>
+            )}
+            {isNoteResource && (
+              <NavLink href={`/orgs/${orgId}/notes/${resId}/timeline`}>
+                Note timeline →
+              </NavLink>
+            )}
+            <NavLink href={`/orgs/${orgId}/timeline`}>Org timeline →</NavLink>
+          </div>
+        );
+      })()}
       )}
 
       {node.type === "Tag" && (
@@ -136,7 +169,7 @@ function NodeDetails({ node, orgId, onExpand, expanding }: {
           {expanding ? "Expanding…" : "Expand neighbors"}
         </button>
         <button
-          onClick={() => window.location.href = `/orgs/${orgId}/graph/${node.type}/${node.id}`}
+          onClick={() => router.push(`/orgs/${orgId}/graph/${node.type}/${node.id}`)}
           className="w-full rounded-md border bg-muted px-2 py-1.5 text-[11px] font-medium text-foreground hover:bg-muted/80"
         >
           Explore as center →
@@ -164,7 +197,6 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 }
 
 export function GraphPageClient({ initialData, centerType, centerId, orgId }: GraphPageClientProps) {
-  const router = useRouter();
   const [graphData, setGraphData] = useState<GraphData | null>(initialData);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [depth, setDepth] = useState(2);
