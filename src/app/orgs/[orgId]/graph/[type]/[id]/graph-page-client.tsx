@@ -206,12 +206,12 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  function buildQuery(overrides: Record<string, string | number> = {}) {
+  const buildQuery = useCallback((overrides: Record<string, string | number> = {}) => {
     const p = new URLSearchParams({ orgId, depth: String(depth), limit: "50", ...Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, String(v)])) });
     if (fromDate) p.set("from", new Date(fromDate).toISOString());
     if (toDate) { const d = new Date(toDate); d.setHours(23, 59, 59, 999); p.set("to", d.toISOString()); }
     return p.toString();
-  }
+  }, [orgId, depth, fromDate, toDate]);
 
   const expandNode = useCallback(async (node: GraphNode) => {
     setExpanding(true);
@@ -237,7 +237,7 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
     } catch { /* ignore */ } finally {
       setExpanding(false);
     }
-  }, [depth, orgId, fromDate, toDate]);
+  }, [buildQuery]);
 
   // Single click → select + show details only
   function handleNodeClick(node: GraphNode) {
