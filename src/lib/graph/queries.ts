@@ -27,6 +27,13 @@ function nodeLabel(type: GraphNodeType, props: Record<string, unknown>): string 
   }
 }
 
+export interface NeighborhoodOptions {
+  depth?: number;
+  limit?: number;
+  from?: string; // ISO date string, inclusive
+  to?: string;   // ISO date string, inclusive
+}
+
 /**
  * Query Neo4j for neighborhood of a node up to `depth` hops, collecting
  * up to `limit` nodes. Returns null if Neo4j is unavailable.
@@ -35,7 +42,8 @@ export async function getNodeNeighborhood(
   type: GraphNodeType,
   id: string,
   depth: number = 2,
-  limit: number = 50
+  limit: number = 50,
+  opts: NeighborhoodOptions = {}
 ): Promise<GraphData | null> {
   const driver = getDriver();
   if (!driver) return null;
@@ -50,16 +58,17 @@ export async function getNodeNeighborhood(
     );
 
     if (result.records.length > 0) {
-      return buildGraphData(result.records[0].get("nodes"), result.records[0].get("relationships"), id);
+      const data = buildGraphData(result.records[0].get("nodes"), result.records[0].get("relationships"), id);
+      return filterByDate(data, opts.from, opts.to);
     }
 
     // Fallback without APOC
-    return await fallbackNeighborhood(session, type, id, depth, limit);
+    return await fallbackNeighborhood(session, type, id, depth, limit, opts);
   } catch (err) {
     // APOC not available — use manual expansion
     log.debug({ err }, "graph.apoc_unavailable_using_fallback");
     try {
-      return await fallbackNeighborhood(session, type, id, depth, limit);
+      return await fallbackNeighborhood(session, type, id, depth, limit, opts);
     } catch (fallbackErr) {
       log.error({ err: fallbackErr, type, id }, "graph.query.error");
       return null;
@@ -69,12 +78,32 @@ export async function getNodeNeighborhood(
   }
 }
 
+function filterByDate(data: GraphData, from?: string, to?: string): GraphData {
+  if (!from && !to) return data;
+  const fromTs = from ? new Date(from).getTime() : -Infinity;
+  const toTs = to ? new Date(to).getTime() : Infinity;
+
+  const keepIds = new Set<string>();
+  keepIds.add(data.centerNodeId); // always keep center
+  for (const node of data.nodes) {
+    const raw = node.properties.createdAt as string | undefined;
+    if (!raw) { keepIds.add(node.id); continue; } // no date → keep
+    const ts = new Date(raw).getTime();
+    if (ts >= fromTs && ts <= toTs) keepIds.add(node.id);
+  }
+
+  const nodes = data.nodes.filter((n) => keepIds.has(n.id));
+  const links = data.links.filter((l) => keepIds.has(l.source) && keepIds.has(l.target));
+  return { ...data, nodes, links };
+}
+
 async function fallbackNeighborhood(
   session: ReturnType<NonNullable<ReturnType<typeof getDriver>>["session"]>,
   _type: GraphNodeType,
   id: string,
   depth: number,
-  limit: number
+  limit: number,
+  opts: NeighborhoodOptions = {}
 ): Promise<GraphData | null> {
   // Build a variable-depth pattern manually up to depth 4
   const safeDepth = Math.min(depth, 4);
@@ -116,7 +145,11 @@ async function fallbackNeighborhood(
   }
 
   const record = result.records[0];
-  return buildGraphData(record.get("nodes"), record.get("relationships"), id);
+  return filterByDate(
+    buildGraphData(record.get("nodes"), record.get("relationships"), id),
+    opts.from,
+    opts.to
+  );
 }
 
 function buildGraphData(
