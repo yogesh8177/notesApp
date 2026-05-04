@@ -132,6 +132,20 @@ export function GraphCanvas({ data, orgId: _orgId, centerNodeId, expandedNodeId,
         linkLabel="type"
         linkDirectionalArrowLength={4}
         linkDirectionalArrowRelPos={1}
+        linkWidth={(link) => {
+          const l = link as ForceLink;
+          const srcId = typeof l.source === "string" ? l.source : (l.source as ForceNode).id;
+          const tgtId = typeof l.target === "string" ? l.target : (l.target as ForceNode).id;
+          return expandedNodeIdRef.current && (srcId === expandedNodeIdRef.current || tgtId === expandedNodeIdRef.current) ? 2.5 : 1;
+        }}
+        linkColor={(link) => {
+          const l = link as ForceLink;
+          const srcId = typeof l.source === "string" ? l.source : (l.source as ForceNode).id;
+          const tgtId = typeof l.target === "string" ? l.target : (l.target as ForceNode).id;
+          return expandedNodeIdRef.current && (srcId === expandedNodeIdRef.current || tgtId === expandedNodeIdRef.current)
+            ? "#06b6d4"
+            : "#94a3b8";
+        }}
         onNodeClick={(node) => handleNodeClick(node as ForceNode)}
         onNodeRightClick={(node) => handleNodeDoubleClick(node as ForceNode)}
         onEngineStop={() => {
