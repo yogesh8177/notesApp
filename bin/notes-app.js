@@ -23,6 +23,9 @@ const COMMANDS = {
   seed:          "Seed development data (npm run seed)",
   dev:           "Start the development server (npm run dev)",
   start:         "Start the production server (npm run start)",
+  "graph:setup": "Create Neo4j constraints + indexes (run once)",
+  "graph:sync":  "Bulk sync Postgres data into Neo4j [--org=<id>]",
+  "graph:clear": "Delete all Neo4j graph data [--force]",
   help:          "Show this help",
 };
 
@@ -40,6 +43,13 @@ function run(script) {
     stdio: "inherit",
     shell: true,
   });
+  child.on("exit", (code) => process.exit(code ?? 0));
+}
+
+function runWithArgs(script, extraArgs) {
+  const args = ["run", script];
+  if (extraArgs.length) args.push("--", ...extraArgs);
+  const child = spawn("npm", args, { cwd: ROOT, stdio: "inherit", shell: true });
   child.on("exit", (code) => process.exit(code ?? 0));
 }
 
@@ -291,6 +301,9 @@ switch (command) {
   case "seed":         run("seed"); break;
   case "dev":          run("dev"); break;
   case "start":        run("start"); break;
+  case "graph:setup":  run("graph:setup"); break;
+  case "graph:sync":   runWithArgs("graph:sync", process.argv.slice(3)); break;
+  case "graph:clear":  runWithArgs("graph:clear", process.argv.slice(3)); break;
   case "help":
   case undefined:      help(); break;
   default:
