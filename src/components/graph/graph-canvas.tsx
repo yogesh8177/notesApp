@@ -36,11 +36,12 @@ interface ForceLink {
 interface GraphCanvasProps {
   data: GraphData;
   orgId: string;
+  newNodeIds?: Set<string>;
   onNodeClick?: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void;
 }
 
-export function GraphCanvas({ data, orgId: _orgId, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
+export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
@@ -117,14 +118,30 @@ export function GraphCanvas({ data, orgId: _orgId, onNodeClick, onNodeDoubleClic
         nodeCanvasObjectMode={() => "after"}
         nodeCanvasObject={(node, ctx, globalScale) => {
           const n = node as ForceNode;
+          const x = n.x ?? 0;
+          const y = n.y ?? 0;
+
+          // Highlight ring for newly expanded nodes
+          if (newNodeIds?.has(n.id)) {
+            ctx.beginPath();
+            ctx.arc(x, y, 9, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#facc15";
+            ctx.lineWidth = 2.5 / globalScale;
+            ctx.stroke();
+            // Outer glow
+            ctx.beginPath();
+            ctx.arc(x, y, 13, 0, 2 * Math.PI);
+            ctx.strokeStyle = "rgba(250,204,21,0.3)";
+            ctx.lineWidth = 4 / globalScale;
+            ctx.stroke();
+          }
+
           const label = n.label ?? n.id;
           const fontSize = Math.max(10 / globalScale, 2);
           ctx.font = `${fontSize}px sans-serif`;
           ctx.fillStyle = "#1e293b";
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
-          const x = n.x ?? 0;
-          const y = n.y ?? 0;
           ctx.fillText(label, x, y + 7);
         }}
       />

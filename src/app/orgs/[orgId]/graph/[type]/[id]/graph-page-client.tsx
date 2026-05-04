@@ -170,6 +170,7 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
   const [depth, setDepth] = useState(2);
   const [loading, setLoading] = useState(false);
   const [expanding, setExpanding] = useState(false);
+  const [newNodeIds, setNewNodeIds] = useState<Set<string>>(new Set());
 
   const expandNode = useCallback(async (node: GraphNode) => {
     setExpanding(true);
@@ -180,7 +181,16 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
       );
       const payload = (await res.json()) as { ok: boolean; data?: GraphData };
       if (payload.ok && payload.data) {
-        setGraphData((prev) => prev ? mergeGraphData(prev, payload.data!) : payload.data!);
+        setGraphData((prev) => {
+          const merged = prev ? mergeGraphData(prev, payload.data!) : payload.data!;
+          const existingIds = new Set(prev?.nodes.map((n) => n.id) ?? []);
+          const fresh = new Set(merged.nodes.filter((n) => !existingIds.has(n.id)).map((n) => n.id));
+          if (fresh.size > 0) {
+            setNewNodeIds(fresh);
+            setTimeout(() => setNewNodeIds(new Set()), 2500);
+          }
+          return merged;
+        });
       }
     } catch { /* ignore */ } finally {
       setExpanding(false);
@@ -249,6 +259,7 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
         <GraphCanvas
           data={graphData}
           orgId={orgId}
+          newNodeIds={newNodeIds}
           onNodeClick={handleNodeClick}
           onNodeDoubleClick={handleNodeDoubleClick}
         />
