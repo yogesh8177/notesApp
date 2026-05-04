@@ -80,7 +80,8 @@ async function fallbackNeighborhood(
   const result = await session.run(
     `MATCH (center {id: $id})
      OPTIONAL MATCH path = (center)-[*1..${safeDepth}]-(neighbor)
-     WITH center, collect(DISTINCT neighbor)[0..$limit] AS neighbors,
+     WITH center, neighbor, path LIMIT $limit
+     WITH center, collect(DISTINCT neighbor) AS neighbors,
           collect(DISTINCT relationships(path)) AS relPaths
      UNWIND [center] + neighbors AS n
      WITH collect(DISTINCT n) AS allNodes, relPaths
