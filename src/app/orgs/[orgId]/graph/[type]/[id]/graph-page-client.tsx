@@ -259,6 +259,7 @@ export function GraphPageClient({ initialData, centerType, centerId, orgId }: Gr
         <GraphCanvas
           data={graphData}
           orgId={orgId}
+          centerNodeId={graphData.centerNodeId}
           newNodeIds={newNodeIds}
           onNodeClick={handleNodeClick}
           onNodeDoubleClick={handleNodeDoubleClick}

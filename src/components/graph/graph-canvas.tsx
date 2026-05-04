@@ -33,21 +33,30 @@ interface ForceLink {
   type: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FGInstance = any;
+
 interface GraphCanvasProps {
   data: GraphData;
   orgId: string;
+  centerNodeId?: string;
   newNodeIds?: Set<string>;
   onNodeClick?: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void;
 }
 
-export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
+export function GraphCanvas({ data, orgId: _orgId, centerNodeId, newNodeIds, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fgRef = useRef<FGInstance>(null);
+  const centeredRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   // Ref so the canvas paint callback always sees current highlighted IDs
   // without triggering a graphData reference change on every highlight update.
   const newNodeIdsRef = useRef<Set<string>>(newNodeIds ?? new Set());
   useEffect(() => { newNodeIdsRef.current = newNodeIds ?? new Set(); }, [newNodeIds]);
+
+  // Reset centering when centerNodeId changes (new page load / explore-as-center)
+  useEffect(() => { centeredRef.current = false; }, [centerNodeId]);
 
   useEffect(() => {
     function update() {
@@ -109,6 +118,7 @@ export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNo
       </div>
 
       <ForceGraph2D
+        ref={fgRef}
         graphData={graphData}
         width={dimensions.width}
         height={dimensions.height}
@@ -121,6 +131,16 @@ export function GraphCanvas({ data, orgId: _orgId, newNodeIds, onNodeClick, onNo
         linkDirectionalArrowRelPos={1}
         onNodeClick={(node) => handleNodeClick(node as ForceNode)}
         onNodeRightClick={(node) => handleNodeDoubleClick(node as ForceNode)}
+        onEngineStop={() => {
+          if (centeredRef.current || !centerNodeId || !fgRef.current) return;
+          centeredRef.current = true;
+          const nodes: ForceNode[] = fgRef.current.graphData().nodes;
+          const target = nodes.find((n) => n.id === centerNodeId);
+          if (target?.x != null && target?.y != null) {
+            fgRef.current.centerAt(target.x, target.y, 600);
+            fgRef.current.zoom(2.5, 600);
+          }
+        }}
         nodeCanvasObjectMode={() => "after"}
         nodeCanvasObject={(node, ctx, globalScale) => {
           const n = node as ForceNode;
