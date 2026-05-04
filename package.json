@@ -25,7 +25,10 @@
     "db:migrate": "tsx scripts/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed/run.ts",
-    "seed:large": "SEED_NOTE_COUNT=10000 tsx scripts/seed/run.ts"
+    "seed:large": "SEED_NOTE_COUNT=10000 tsx scripts/seed/run.ts",
+    "graph:setup": "tsx scripts/graph/setup.ts",
+    "graph:sync": "tsx scripts/graph/sync.ts",
+    "graph:clear": "tsx scripts/graph/clear.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
