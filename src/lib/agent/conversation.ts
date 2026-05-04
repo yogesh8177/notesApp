@@ -3,6 +3,7 @@ import { db } from "@/lib/db/client";
 import { conversationTurns, conversationSummaries, notes } from "@/lib/db/schema";
 import { compactCheckpoints } from "@/lib/ai/compact";
 import { log } from "@/lib/log";
+import { syncNode } from "@/lib/graph/sync";
 
 const SUMMARY_WINDOW = 10;
 
@@ -64,7 +65,7 @@ export async function addTurn(opts: {
         .insert(conversationTurns)
         .values(values)
         .onConflictDoNothing({ target: conversationTurns.idempotencyKey })
-        .returning({ turnIndex: conversationTurns.turnIndex })
+        .returning({ id: conversationTurns.id, turnIndex: conversationTurns.turnIndex })
     : await db
         .insert(conversationTurns)
         .values(values)
@@ -75,11 +76,12 @@ export async function addTurn(opts: {
             noteRefs: sql`excluded.note_refs`,
           },
         })
-        .returning({ turnIndex: conversationTurns.turnIndex });
+        .returning({ id: conversationTurns.id, turnIndex: conversationTurns.turnIndex });
 
   if (!row) return { turnIndex: -1 }; // idempotent skip — duplicate hook fire
 
   void maybeCompactConversation(opts.orgId, opts.sessionNoteId, row.turnIndex);
+  void syncNode("ConversationTurn", row.id, opts.orgId);
 
   return { turnIndex: row.turnIndex };
 }
