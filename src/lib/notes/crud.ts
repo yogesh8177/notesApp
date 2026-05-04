@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { assertCanReadNote, assertCanWriteNote, getNotePermission } from "@/lib/auth/permissions";
 import { audit } from "@/lib/log/audit";
+import { syncNode, deleteNode } from "@/lib/graph/sync";
 import { NotesError } from "./errors";
 import type { NoteCreateInput, NotesListQuery, NoteUpdateInput } from "./schemas";
 import {
@@ -300,6 +301,8 @@ export async function createNote(input: NoteCreateInput, userId: string) {
     metadata: { visibility: note.visibility, tagCount: tagNames.length },
   });
 
+  void syncNode("Note", note.id, note.orgId);
+
   const detail = await getNoteDetailForUser(note.id, userId);
   return detail.note;
 }
@@ -363,6 +366,8 @@ export async function updateNote(noteId: string, input: NoteUpdateInput, userId:
     metadata: { visibility: updated.visibility, changeSummary: input.changeSummary ?? null },
   });
 
+  void syncNode("Note", noteId, updated.orgId);
+
   const detail = await getNoteDetailForUser(noteId, userId);
   return detail.note;
 }
@@ -389,4 +394,6 @@ export async function deleteNote(noteId: string, userId: string) {
     resourceType: "note",
     resourceId: noteId,
   });
+
+  void deleteNode("Note", noteId);
 }

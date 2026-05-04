@@ -15,6 +15,29 @@ import { getDriver } from "./client";
 import type { GraphNodeType } from "./types";
 
 /**
+ * Remove a node and all its relationships from Neo4j.
+ * Safe to call even when Neo4j is unavailable — returns early without throwing.
+ */
+export async function deleteNode(
+  type: GraphNodeType,
+  id: string
+): Promise<void> {
+  const driver = getDriver();
+  if (!driver) return;
+
+  const session = driver.session();
+  try {
+    await session.executeWrite((tx) =>
+      tx.run(`MATCH (n:${type} {id: $id}) DETACH DELETE n`, { id })
+    );
+  } catch (err) {
+    log.error({ err, type, id }, "graph.delete.error");
+  } finally {
+    await session.close();
+  }
+}
+
+/**
  * Sync a node and its direct relationships from Postgres into Neo4j.
  * Safe to call even when Neo4j is unavailable — returns early without throwing.
  */
