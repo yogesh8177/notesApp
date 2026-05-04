@@ -61,14 +61,15 @@ export async function GET(
   }
 
   try {
-    // Sync first so the node exists before we query. Only blocks if orgId is provided.
-    if (orgId) {
+    let data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
+
+    // Only sync when the node is absent — avoids a Postgres+Neo4j write on every request
+    if (!data && orgId) {
       await syncNode(type as GraphNodeType, id, orgId).catch((e) =>
         log.warn({ e, type, id }, "graph.node.sync.error")
       );
+      data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
     }
-
-    const data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
 
     if (!data) {
       return NextResponse.json(
