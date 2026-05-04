@@ -26,7 +26,7 @@ async function processBatch(): Promise<number> {
       LIMIT ${BATCH_SIZE}
       FOR UPDATE SKIP LOCKED
     `);
-    return rows as {
+    return rows as unknown as {
       id: number;
       operation: string;
       node_type: string;
