@@ -14,7 +14,8 @@ export function getDriver(): Driver | null {
       neo4j.auth.basic(
         process.env.NEO4J_USER ?? "neo4j",
         process.env.NEO4J_PASSWORD ?? ""
-      )
+      ),
+      { maxConnectionPoolSize: 20 }
     );
   }
   return _driver;

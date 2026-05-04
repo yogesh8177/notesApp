@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   notes,
@@ -89,6 +89,14 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
     .where(and(eq(auditLog.resourceId, noteId), eq(auditLog.orgId, orgId)))
     .limit(20);
 
+  // Batch-load all shared users in one query instead of one query per share
+  const sharedUserIds = shares.map((s) => s.sharedWithUserId);
+  const sharedUsers =
+    sharedUserIds.length > 0
+      ? await db.select().from(users).where(inArray(users.id, sharedUserIds))
+      : [];
+  const sharedUserMap = new Map(sharedUsers.map((u) => [u.id, u]));
+
   await session.executeWrite(async (tx) => {
     // Merge Note node
     await tx.run(
@@ -145,9 +153,7 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
 
     // Shares
     for (const share of shares) {
-      const sharedUser = await db.query.users.findFirst({
-        where: eq(users.id, share.sharedWithUserId),
-      });
+      const sharedUser = sharedUserMap.get(share.sharedWithUserId);
       if (sharedUser) {
         await tx.run(
           `MERGE (u:User {id: $id})
@@ -419,6 +425,17 @@ async function syncAuditEvent(session: Neo4jSession, eventIdStr: string, orgId: 
   const event = events[0];
   if (!event) return;
 
+  // Resolve related records outside the Neo4j transaction (Postgres lookups
+  // must not interleave with the Neo4j write transaction).
+  const actor = event.userId
+    ? await db.query.users.findFirst({ where: eq(users.id, event.userId) })
+    : null;
+
+  const relatedNote =
+    event.resourceType === "note" && event.resourceId
+      ? await db.query.notes.findFirst({ where: eq(notes.id, event.resourceId) })
+      : null;
+
   await session.executeWrite(async (tx) => {
     await tx.run(
       `MERGE (ae:AuditEvent {id: $id})
@@ -435,45 +452,39 @@ async function syncAuditEvent(session: Neo4jSession, eventIdStr: string, orgId: 
       }
     );
 
-    if (event.userId) {
-      const actor = await db.query.users.findFirst({ where: eq(users.id, event.userId) });
-      if (actor) {
-        await tx.run(
-          `MERGE (u:User {id: $id})
-           SET u.orgId = $orgId, u.email = $email, u.displayName = $displayName`,
-          { id: actor.id, orgId, email: actor.email, displayName: actor.displayName ?? "" }
-        );
-        await tx.run(
-          `MATCH (u:User {id: $userId}), (ae:AuditEvent {id: $eventId})
-           MERGE (u)-[:PERFORMED]->(ae)`,
-          { userId: actor.id, eventId: String(event.id) }
-        );
-      }
+    if (actor) {
+      await tx.run(
+        `MERGE (u:User {id: $id})
+         SET u.orgId = $orgId, u.email = $email, u.displayName = $displayName`,
+        { id: actor.id, orgId, email: actor.email, displayName: actor.displayName ?? "" }
+      );
+      await tx.run(
+        `MATCH (u:User {id: $userId}), (ae:AuditEvent {id: $eventId})
+         MERGE (u)-[:PERFORMED]->(ae)`,
+        { userId: actor.id, eventId: String(event.id) }
+      );
     }
 
-    if (event.resourceType === "note" && event.resourceId) {
-      const note = await db.query.notes.findFirst({ where: eq(notes.id, event.resourceId) });
-      if (note) {
-        await tx.run(
-          `MERGE (n:Note {id: $id})
-           SET n.orgId = $orgId, n.title = $title, n.visibility = $visibility,
-               n.currentVersion = $currentVersion, n.createdAt = $createdAt, n.updatedAt = $updatedAt`,
-          {
-            id: note.id,
-            orgId: note.orgId,
-            title: note.title,
-            visibility: note.visibility,
-            currentVersion: note.currentVersion,
-            createdAt: note.createdAt.toISOString(),
-            updatedAt: note.updatedAt.toISOString(),
-          }
-        );
-        await tx.run(
-          `MATCH (ae:AuditEvent {id: $eventId}), (n:Note {id: $noteId})
-           MERGE (ae)-[:ACTED_ON]->(n)`,
-          { eventId: String(event.id), noteId: note.id }
-        );
-      }
+    if (relatedNote) {
+      await tx.run(
+        `MERGE (n:Note {id: $id})
+         SET n.orgId = $orgId, n.title = $title, n.visibility = $visibility,
+             n.currentVersion = $currentVersion, n.createdAt = $createdAt, n.updatedAt = $updatedAt`,
+        {
+          id: relatedNote.id,
+          orgId: relatedNote.orgId,
+          title: relatedNote.title,
+          visibility: relatedNote.visibility,
+          currentVersion: relatedNote.currentVersion,
+          createdAt: relatedNote.createdAt.toISOString(),
+          updatedAt: relatedNote.updatedAt.toISOString(),
+        }
+      );
+      await tx.run(
+        `MATCH (ae:AuditEvent {id: $eventId}), (n:Note {id: $noteId})
+         MERGE (ae)-[:ACTED_ON]->(n)`,
+        { eventId: String(event.id), noteId: relatedNote.id }
+      );
     }
   });
 }

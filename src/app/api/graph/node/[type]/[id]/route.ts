@@ -58,9 +58,9 @@ export async function GET(
   }
 
   try {
-    // Sync first if orgId provided
+    // Fire-and-forget sync — do not block the response on a Postgres+Neo4j round-trip
     if (orgId) {
-      await syncNode(type as GraphNodeType, id, orgId);
+      void syncNode(type as GraphNodeType, id, orgId);
     }
 
     const data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit);
