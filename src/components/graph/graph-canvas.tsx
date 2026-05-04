@@ -37,9 +37,10 @@ interface GraphCanvasProps {
   data: GraphData;
   orgId: string;
   onNodeClick?: (node: GraphNode) => void;
+  onNodeDoubleClick?: (node: GraphNode) => void;
 }
 
-export function GraphCanvas({ data, orgId: _orgId, onNodeClick }: GraphCanvasProps) {
+export function GraphCanvas({ data, orgId: _orgId, onNodeClick, onNodeDoubleClick }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
@@ -72,15 +73,16 @@ export function GraphCanvas({ data, orgId: _orgId, onNodeClick }: GraphCanvasPro
     })) as ForceLink[],
   };
 
+  function toGraphNode(node: ForceNode): GraphNode {
+    return { id: node.id, type: node.type as GraphNode["type"], label: node.label, properties: node.properties };
+  }
+
   function handleNodeClick(node: ForceNode) {
-    if (onNodeClick) {
-      onNodeClick({
-        id: node.id,
-        type: node.type as GraphNode["type"],
-        label: node.label,
-        properties: node.properties,
-      });
-    }
+    onNodeClick?.(toGraphNode(node));
+  }
+
+  function handleNodeDoubleClick(node: ForceNode) {
+    onNodeDoubleClick?.(toGraphNode(node));
   }
 
   return (
@@ -111,6 +113,7 @@ export function GraphCanvas({ data, orgId: _orgId, onNodeClick }: GraphCanvasPro
         linkDirectionalArrowLength={4}
         linkDirectionalArrowRelPos={1}
         onNodeClick={(node) => handleNodeClick(node as ForceNode)}
+        onNodeRightClick={(node) => handleNodeDoubleClick(node as ForceNode)}
         nodeCanvasObjectMode={() => "after"}
         nodeCanvasObject={(node, ctx, globalScale) => {
           const n = node as ForceNode;
