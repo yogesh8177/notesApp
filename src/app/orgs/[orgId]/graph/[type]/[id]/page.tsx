@@ -106,9 +106,12 @@ NEO4J_PASSWORD=your-password`}
     );
   }
 
-  // Sync and fetch initial graph data
-  await syncNode(type as GraphNodeType, id, orgId);
-  const initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50);
+  // Fetch first; only sync if the node is missing from Neo4j
+  let initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50);
+  if (!initialData) {
+    await syncNode(type as GraphNodeType, id, orgId).catch(() => null);
+    initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50);
+  }
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col space-y-3">
