@@ -1,3 +1,4 @@
+import neo4j from "neo4j-driver";
 import { log } from "@/lib/log";
 import { getDriver } from "./client";
 import type { GraphData, GraphNode, GraphLink, GraphNodeType } from "./types";
@@ -45,7 +46,7 @@ export async function getNodeNeighborhood(
       `MATCH (center {id: $id})
        CALL apoc.path.subgraphAll(center, {maxLevel: $depth, limit: $limit}) YIELD nodes, relationships
        RETURN nodes, relationships`,
-      { id, depth, limit }
+      { id, depth: neo4j.int(depth), limit: neo4j.int(limit) }
     );
 
     if (result.records.length > 0) {
@@ -88,7 +89,7 @@ async function fallbackNeighborhood(
      UNWIND relPaths AS rels
      UNWIND rels AS r
      RETURN allNodes AS nodes, collect(DISTINCT r) AS relationships`,
-    { id, limit }
+    { id, limit: neo4j.int(limit) }
   );
 
   if (result.records.length === 0) {
