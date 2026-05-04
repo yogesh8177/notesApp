@@ -58,17 +58,19 @@ export async function GET(
   }
 
   try {
-    // Fire-and-forget sync — do not block the response on a Postgres+Neo4j round-trip
+    // Sync first so the node exists before we query. Only blocks if orgId is provided.
     if (orgId) {
-      void syncNode(type as GraphNodeType, id, orgId);
+      await syncNode(type as GraphNodeType, id, orgId).catch((e) =>
+        log.warn({ e, type, id }, "graph.node.sync.error")
+      );
     }
 
     const data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit);
 
     if (!data) {
       return NextResponse.json(
-        { ok: false, code: "UPSTREAM", message: "Neo4j unavailable or node not found" },
-        { status: 503 }
+        { ok: false, code: "NOT_FOUND", message: "Node not found in graph" },
+        { status: 404 }
       );
     }
 

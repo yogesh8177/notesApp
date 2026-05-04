@@ -32,6 +32,7 @@ export async function deleteNode(
     );
   } catch (err) {
     log.error({ err, type, id }, "graph.delete.error");
+    throw err;
   } finally {
     await session.close();
   }
@@ -75,6 +76,7 @@ export async function syncNode(
     }
   } catch (err) {
     log.error({ err, type, id, orgId }, "graph.sync.error");
+    throw err;
   } finally {
     await session.close();
   }
