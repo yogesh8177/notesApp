@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { NoteListItem } from "@/lib/notes";
 import { EmptyState, VisibilityBadge, formatTimestamp } from "../components";
+import { GraphPreview } from "@/components/graph/graph-preview";
 
 interface Props {
   orgId: string;
@@ -69,7 +71,8 @@ export function NotesList({ orgId, initialNotes, initialNextCursor, query }: Pro
     <div className="space-y-4">
       <div className="grid gap-4">
         {notes.map((note) => (
-          <Card key={note.id} className="transition hover:border-foreground/20">
+          <GraphPreview key={note.id} nodeType="Note" nodeId={note.id} orgId={orgId}>
+          <Card className="transition hover:border-foreground/20">
             <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -92,6 +95,11 @@ export function NotesList({ orgId, initialNotes, initialNextCursor, query }: Pro
                 <Button asChild variant="ghost" size="sm">
                   <Link href={`/orgs/${orgId}/notes/${note.id}/history`}>History</Link>
                 </Button>
+                <Button asChild variant="ghost" size="sm" title="View in graph">
+                  <Link href={`/orgs/${orgId}/graph/Note/${note.id}`}>
+                    <Network className="h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -113,6 +121,7 @@ export function NotesList({ orgId, initialNotes, initialNextCursor, query }: Pro
               </div>
             </CardContent>
           </Card>
+          </GraphPreview>
         ))}
       </div>
 

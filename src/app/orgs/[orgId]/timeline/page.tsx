@@ -24,11 +24,13 @@ import {
   Database,
   Bot,
   AlertCircle,
+  GitGraph,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
 import { getOrgTimeline, type TimelineEvent } from "@/lib/timeline/queries";
 import { cn } from "@/lib/utils";
+import { GraphPreview } from "@/components/graph/graph-preview";
 
 // ---------------------------------------------------------------------------
 // Icon + colour per action
@@ -338,11 +340,22 @@ function TimelineItem({
       </div>
 
       {/* Content */}
-      <div className="pb-6 pt-1 min-w-0">
-        <p className="text-sm leading-5">
-          <span className="font-medium">{actorName(event.actor)}</span>{" "}
-          <EventDescription event={event} orgId={orgId} />
-        </p>
+      <div className="pb-6 pt-1 min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <GraphPreview nodeType="AuditEvent" nodeId={String(event.id)} orgId={orgId}>
+            <p className="text-sm leading-5">
+              <span className="font-medium">{actorName(event.actor)}</span>{" "}
+              <EventDescription event={event} orgId={orgId} />
+            </p>
+          </GraphPreview>
+          <Link
+            href={`/orgs/${orgId}/graph/AuditEvent/${event.id}`}
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="View in graph"
+          >
+            <GitGraph className="h-3.5 w-3.5" />
+          </Link>
+        </div>
         <p className="mt-0.5 text-xs text-muted-foreground">{formatTime(event.createdAt)}</p>
       </div>
     </div>
