@@ -24,14 +24,10 @@ async function main() {
   const sql = postgres(url, { max: 1, prepare: false });
 
   try {
-    // Pre-create auth schema + stub table so base migration FK constraints pass.
-    await sql.unsafe(`
-      CREATE SCHEMA IF NOT EXISTS auth;
-      CREATE TABLE IF NOT EXISTS auth.users (
-        id uuid PRIMARY KEY,
-        email text
-      );
-    `);
+    // Pre-create auth schema only — 0000_ creates auth.users itself.
+    // Do NOT create auth.users here; that would conflict with the migration's
+    // CREATE TABLE "auth"."users" (which has no IF NOT EXISTS).
+    await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS auth;`);
 
     await sql.unsafe(`
       CREATE TABLE IF NOT EXISTS _migrations (
