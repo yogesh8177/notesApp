@@ -1,5 +1,5 @@
-import { desc, eq } from "drizzle-orm";
-import { agentSessions, notes } from "@/lib/db/schema";
+import { count, desc, eq, sql } from "drizzle-orm";
+import { agentSessions, auditLog, conversationTurns, noteVersions, notes } from "@/lib/db/schema";
 import { db } from "@/lib/db/client";
 import { sessionEpochSummaries } from "@/lib/db/schema";
 
@@ -40,6 +40,51 @@ export async function listAgentSessions(orgId: string, limit = 20): Promise<Agen
     .orderBy(desc(agentSessions.lastSeenAt))
     .limit(limit);
   return rows;
+}
+
+export interface SessionStats {
+  totalSubagents: number;
+  totalTurns: number;
+  /** UTC hour (0–23) with the most checkpoint activity, null if no versions exist. */
+  peakHour: number | null;
+  peakHourCount: number;
+}
+
+export async function getSessionStats(orgId: string, noteId: string): Promise<SessionStats> {
+  const [subagentResult, turnResult, peakHourResult] = await Promise.all([
+    // Distinct subagent IDs from subagent.start events on this session note
+    db
+      .select({ total: sql<string>`COUNT(DISTINCT ${auditLog.metadata}->>'agentId')` })
+      .from(auditLog)
+      .where(
+        sql`${auditLog.orgId} = ${orgId}
+          AND ${auditLog.resourceId} = ${noteId}
+          AND ${auditLog.action} = 'agent.event.subagent.start'`,
+      ),
+    // Total conversation turns logged for this session
+    db
+      .select({ total: count(conversationTurns.id) })
+      .from(conversationTurns)
+      .where(eq(conversationTurns.sessionNoteId, noteId)),
+    // Hour-of-day (UTC) with most checkpoint versions
+    db
+      .select({
+        hour: sql<number>`EXTRACT(HOUR FROM ${noteVersions.createdAt} AT TIME ZONE 'UTC')::int`,
+        cnt: count(noteVersions.id),
+      })
+      .from(noteVersions)
+      .where(eq(noteVersions.noteId, noteId))
+      .groupBy(sql`EXTRACT(HOUR FROM ${noteVersions.createdAt} AT TIME ZONE 'UTC')::int`)
+      .orderBy(desc(count(noteVersions.id)))
+      .limit(1),
+  ]);
+
+  return {
+    totalSubagents: Number(subagentResult[0]?.total ?? 0),
+    totalTurns: turnResult[0]?.total ?? 0,
+    peakHour: peakHourResult[0] != null ? peakHourResult[0].hour : null,
+    peakHourCount: peakHourResult[0]?.cnt ?? 0,
+  };
 }
 
 export async function getEpochSummaries(noteId: string): Promise<EpochSummary[]> {
