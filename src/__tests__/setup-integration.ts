@@ -1,8 +1,12 @@
 /**
  * Runs before integration tests.
- * Sets stub env vars so @/lib/env passes Zod validation at import time.
- * Real vars (DATABASE_URL, NEO4J_URI) must already be set in the environment.
+ * Loads .env so real DB/service vars are available; stubs non-critical vars so
+ * @/lib/env passes Zod validation even when running outside the full app env.
  */
+import { config } from "dotenv";
+import { resolve } from "path";
+config({ path: resolve(process.cwd(), ".env") });
+
 process.env.NEXT_PUBLIC_SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
