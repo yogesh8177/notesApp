@@ -30,9 +30,11 @@
     "graph:sync": "tsx scripts/graph/sync.ts",
     "graph:clear": "tsx scripts/graph/clear.ts",
     "graph:worker": "tsx scripts/graph-worker.ts",
+    "db:migrate:test": "tsx scripts/db/migrate-test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

@@ -32,6 +32,12 @@ const CONSTRAINTS = [
   "CREATE CONSTRAINT audit_event_id IF NOT EXISTS FOR (n:AuditEvent) REQUIRE n.id IS UNIQUE",
 ];
 
+/** Test helper — clears the driver singleton so tests can change NEO4J_URI mid-run. */
+export function _resetDriver(): void {
+  _driver = null;
+  _indexesReady = false;
+}
+
 /** Creates uniqueness constraints (and implicit indexes) for all node types. No-op after first success. */
 export async function ensureIndexes(): Promise<void> {
   if (_indexesReady) return;
