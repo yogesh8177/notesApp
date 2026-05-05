@@ -29,7 +29,10 @@
     "graph:setup": "tsx scripts/graph/setup.ts",
     "graph:sync": "tsx scripts/graph/sync.ts",
     "graph:clear": "tsx scripts/graph/clear.ts",
-    "graph:worker": "tsx scripts/graph-worker.ts"
+    "graph:worker": "tsx scripts/graph-worker.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -49,6 +52,7 @@
     "diff": "^7.0.0",
     "drizzle-orm": "^0.36.4",
     "lucide-react": "^0.460.0",
+    "neo4j-driver": "^5.26.0",
     "next": "^15.1.11",
     "openai": "^4.73.0",
     "pino": "^9.5.0",
@@ -56,10 +60,9 @@
     "postgres": "^3.4.5",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "react-force-graph-2d": "^1.25.5",
     "react-markdown": "^10.1.0",
     "tailwind-merge": "^2.5.4",
-    "neo4j-driver": "^5.26.0",
-    "react-force-graph-2d": "^1.25.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -68,6 +71,7 @@
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
+    "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "^10.4.20",
     "dotenv": "^16.4.7",
     "drizzle-kit": "^0.31.10",
@@ -77,6 +81,7 @@
     "tailwindcss": "^3.4.16",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.5"
   }
 }
