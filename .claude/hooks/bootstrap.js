@@ -33,10 +33,24 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
         tail.map((t) => `[${t.role}] (turn ${t.turnIndex}) ${t.content}`).join("\n")
       : null;
 
+    const projectNotes = Array.isArray(payload.projectNotes) ? payload.projectNotes : [];
+    const projectNotesBlock = projectNotes.length > 0
+      ? "PROJECT CONTEXT NOTES (tagged #context / #architecture / #decisions):\n" +
+        projectNotes.map((n) => `### ${n.title} (id:${n.id})\n${n.excerpt}`).join("\n\n---\n\n")
+      : null;
+
+    const hotspots = Array.isArray(payload.graphHotspots) ? payload.graphHotspots : [];
+    const hotspotsBlock = hotspots.length > 0
+      ? "KNOWLEDGE HOTSPOTS (notes agents reference most — read these for shared context):\n" +
+        hotspots.map((h) => `- ${h.title} (id:${h.id}, refs:${h.refCount})`).join("\n")
+      : null;
+
     const text = [
       "ORG GUIDELINES:",
       payload.guidelines || "(none)",
       "",
+      projectNotesBlock,
+      hotspotsBlock,
       epochBlock,
       tailBlock,
       "RESUME CHECKPOINT:",
