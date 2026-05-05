@@ -84,16 +84,17 @@ async function loadGuidelines(orgId: string): Promise<string> {
 
 /**
  * Notes explicitly tagged for agent context: #context, #architecture,
- * #decisions, or #project-memory. Truncated to 1500 chars each so they
- * fit in the bootstrap window without crowding out the checkpoint.
+ * #decisions, or #project-memory. Only injected on cold starts (startup).
+ * Capped at 2 notes, sorted by recency, excerpt truncated to 500 chars.
  */
 async function loadProjectNotes(orgId: string): Promise<ProjectNote[]> {
   const CONTEXT_TAGS = ["context", "architecture", "decisions", "project-memory"];
   const rows = await db
-    .selectDistinctOn([notes.id], {
+    .selectDistinctOn([notes.id, notes.updatedAt], {
       id: notes.id,
       title: notes.title,
       content: notes.content,
+      updatedAt: notes.updatedAt,
     })
     .from(notes)
     .innerJoin(noteTags, eq(noteTags.noteId, notes.id))
@@ -105,8 +106,9 @@ async function loadProjectNotes(orgId: string): Promise<ProjectNote[]> {
         inArray(tags.name, CONTEXT_TAGS),
       ),
     )
-    .limit(3);
-  return rows.map((r) => ({ id: r.id, title: r.title, excerpt: r.content.slice(0, 1500) }));
+    .orderBy(desc(notes.updatedAt))
+    .limit(2);
+  return rows.map((r) => ({ id: r.id, title: r.title, excerpt: r.content.slice(0, 500) }));
 }
 
 async function loadEpochSummaries(noteId: string): Promise<EpochSummaryEntry[]> {
@@ -274,14 +276,18 @@ export async function bootstrap(
   // anything else = inject checkpoint, epochs, and recent tail turns for orientation.
   const skipCheckpoint = input.source === "clear";
 
+  // Project notes + graph hotspots are cold-start only — on resume the agent
+  // already has prior turn context and injecting org-wide context again is noise.
+  const isColdStart = input.source === "startup" || input.source == null;
+
   const [guidelines, latestCheckpoint, epochSummaries, tailTurns, projectNotes, graphHotspots] =
     await Promise.all([
       loadGuidelines(orgId),
       skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
       skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
       skipCheckpoint ? Promise.resolve([]) : loadTailTurns(noteId),
-      loadProjectNotes(orgId),
-      getBootstrapGraphContext(orgId),
+      isColdStart ? loadProjectNotes(orgId) : Promise.resolve([]),
+      isColdStart ? getBootstrapGraphContext(orgId) : Promise.resolve([]),
     ]);
 
   return {

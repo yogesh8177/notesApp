@@ -35,13 +35,14 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
 
     const projectNotes = Array.isArray(payload.projectNotes) ? payload.projectNotes : [];
     const projectNotesBlock = projectNotes.length > 0
-      ? "PROJECT CONTEXT NOTES (tagged #context / #architecture / #decisions):\n" +
-        projectNotes.map((n) => `### ${n.title} (id:${n.id})\n${n.excerpt}`).join("\n\n---\n\n")
+      ? "PROJECT CONTEXT (tagged notes — call get_note for full content if relevant):\n" +
+        projectNotes.map((n) => `- ${n.title} (id:${n.id})\n  ${n.excerpt.replace(/\n/g, " ").slice(0, 200)}…`).join("\n")
       : null;
 
+    // Hotspots: title + id only — low token cost, agent fetches if needed
     const hotspots = Array.isArray(payload.graphHotspots) ? payload.graphHotspots : [];
     const hotspotsBlock = hotspots.length > 0
-      ? "KNOWLEDGE HOTSPOTS (notes agents reference most — read these for shared context):\n" +
+      ? "KNOWLEDGE HOTSPOTS (most-referenced notes across agent sessions — fetch if relevant):\n" +
         hotspots.map((h) => `- ${h.title} (id:${h.id}, refs:${h.refCount})`).join("\n")
       : null;
 

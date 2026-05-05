@@ -240,9 +240,11 @@ export async function getBootstrapGraphContext(orgId: string): Promise<GraphHots
   try {
     const result = await session.run(
       `MATCH (ct:ConversationTurn {orgId: $orgId})-[:REFERENCES]->(n:Note {orgId: $orgId})
-       RETURN n.id AS id, n.title AS title, count(ct) AS refCount
+       WITH n, count(ct) AS refCount
+       WHERE refCount >= $minRefs
+       RETURN n.id AS id, n.title AS title, refCount
        ORDER BY refCount DESC LIMIT 5`,
-      { orgId },
+      { orgId, minRefs: neo4j.int(3) },
     );
     return result.records.map((r) => ({
       id: r.get("id") as string,
