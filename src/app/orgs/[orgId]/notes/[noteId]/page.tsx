@@ -7,6 +7,7 @@ import { getNoteDetailForUser, toNotesErr } from "@/lib/notes";
 import { deleteNoteAction, removeShareAction, updateNoteAction, upsertShareAction } from "../actions";
 import { EmptyState, FlashNotice, SectionCard, VisibilityBadge, formatTimestamp } from "../components";
 import { SubmitButton } from "../_components/submit-button";
+import { NoteEditForm } from "../_components/note-edit-form";
 import { NoteFileUploader } from "@/app/orgs/[orgId]/files/_components/note-file-uploader";
 import { MarkdownContent } from "@/components/markdown-content";
 
@@ -82,37 +83,16 @@ export default async function NoteDetailPage({
         description="Edits create a new version snapshot. Visibility changes are limited to the author or an org admin."
       >
         {note.permissions.canWrite ? (
-          <form action={updateAction} className="space-y-4">
-            <Input name="title" defaultValue={note.title} required />
-            <textarea
-              name="content"
-              rows={16}
-              defaultValue={note.content}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-            <div className="grid gap-3 md:grid-cols-3">
-              <select
-                name="visibility"
-                defaultValue={note.visibility}
-                disabled={!note.permissions.canShare}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
-              >
-                <option value="private">Private</option>
-                <option value="org">Org visible</option>
-                <option value="shared">Shared only</option>
-              </select>
-              <Input name="tags" defaultValue={note.tags.join(", ")} placeholder="one, two, three" />
-              <Input name="changeSummary" placeholder="What changed?" />
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <SubmitButton pendingText="Saving…">Save changes</SubmitButton>
-              {note.permissions.canDelete ? (
-                <SubmitButton formAction={deleteAction} variant="destructive" pendingText="Deleting…">
-                  Delete note
-                </SubmitButton>
-              ) : null}
-            </div>
-          </form>
+          <NoteEditForm
+            title={note.title}
+            content={note.content}
+            visibility={note.visibility}
+            tags={note.tags}
+            canShare={note.permissions.canShare}
+            canDelete={note.permissions.canDelete}
+            updateAction={updateAction}
+            deleteAction={deleteAction}
+          />
         ) : (
           <div className="space-y-4">
             <div className="rounded-lg border bg-muted/20 p-4"><MarkdownContent content={note.content} /></div>

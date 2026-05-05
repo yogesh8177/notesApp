@@ -319,6 +319,22 @@ export async function updateNote(noteId: string, input: NoteUpdateInput, userId:
   const nextContent = input.content ?? current.content;
   const nextTags = normalizeTags(input.tags ?? current.tags);
 
+  // No-op: skip the write if nothing actually changed.
+  const currentTagsNorm = normalizeTags(current.tags).sort();
+  const nextTagsNorm = [...nextTags].sort();
+  const tagsUnchanged =
+    currentTagsNorm.length === nextTagsNorm.length &&
+    currentTagsNorm.every((t, i) => t === nextTagsNorm[i]);
+
+  if (
+    nextTitle === current.title &&
+    nextContent === current.content &&
+    nextVisibility === current.visibility &&
+    tagsUnchanged
+  ) {
+    return current;
+  }
+
   const [updated] = await db.transaction(async (tx) => {
     // Lock the row to serialise concurrent version bumps.
     const [locked] = await tx
