@@ -17,8 +17,9 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json* ./
-# Use npm because lockfile-aware installs are most predictable across CI.
-RUN npm ci --no-audit --no-fund
+# Pin npm to match the version that generated the lock file (npm 11).
+# node:20-alpine ships with npm 10; mismatched versions cause "out of sync" errors.
+RUN npm install -g npm@11 && npm ci --no-audit --no-fund
 
 # ----- builder -----------------------------------------------------------------
 FROM node:20-alpine AS builder
