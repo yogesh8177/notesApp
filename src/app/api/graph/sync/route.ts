@@ -6,6 +6,7 @@ import { audit } from "@/lib/log/audit";
 import { ok, err, fromZod, toResponse } from "@/lib/validation/result";
 import { syncNode } from "@/lib/graph/sync";
 import { getDriver } from "@/lib/graph/client";
+import { getMembership } from "@/lib/auth/org";
 import type { GraphNodeType } from "@/lib/graph/types";
 
 const bodySchema = z.object({
@@ -41,6 +42,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { type, id, orgId } = parsed.data;
+
+  const membership = await getMembership(orgId, user.id);
+  if (!membership) {
+    return toResponse(err("FORBIDDEN", "Not a member of this org"));
+  }
 
   try {
     await syncNode(type as GraphNodeType, id, orgId);
