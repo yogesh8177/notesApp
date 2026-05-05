@@ -7,7 +7,7 @@ import { ActivityChart } from "./activity-chart";
 import { buildActivityBars } from "./build-activity-bars";
 import { HealthBadge } from "./health-badge";
 import { CompactButton } from "./compact-button";
-import { getEpochSummaries } from "@/lib/agent/queries";
+import { getEpochSummaries, getSessionStats } from "@/lib/agent/queries";
 
 // ---------------------------------------------------------------------------
 // Checkpoint parser
@@ -126,7 +126,10 @@ export default async function NoteAgentDashboardPage({
 
   const recentHistory = note.history.slice(0, 10);
   const activityBars = buildActivityBars(recentHistory);
-  const epochSummaries = await getEpochSummaries(noteId);
+  const [epochSummaries, sessionStats] = await Promise.all([
+    getEpochSummaries(noteId),
+    getSessionStats(orgId, noteId),
+  ]);
   const commitBaseUrl = checkpoint.repoUrl
     ?? (checkpoint.repo && /^[^/\s]+\/[^/\s]+$/.test(checkpoint.repo)
       ? `https://github.com/${checkpoint.repo}`
@@ -187,6 +190,37 @@ export default async function NoteAgentDashboardPage({
         {checkpoint.summary && (
           <p className="mt-3 text-sm text-muted-foreground border-t pt-3">{checkpoint.summary}</p>
         )}
+      </SectionCard>
+
+      {/* Session Stats */}
+      <SectionCard title="Session Stats">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="rounded-md border bg-muted/20 p-4 text-center">
+            <p className="text-2xl font-bold tabular-nums">{sessionStats.totalSubagents}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Subagents used</p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-4 text-center">
+            <p className="text-2xl font-bold tabular-nums">{sessionStats.totalTurns}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Turns logged</p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-4 text-center">
+            {sessionStats.peakHour !== null ? (
+              <>
+                <p className="text-2xl font-bold tabular-nums font-mono">
+                  {String(sessionStats.peakHour).padStart(2, "0")}:00
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Peak hour UTC&nbsp;·&nbsp;{sessionStats.peakHourCount} checkpoints
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-muted-foreground">—</p>
+                <p className="mt-1 text-xs text-muted-foreground">Peak dev hour</p>
+              </>
+            )}
+          </div>
+        </div>
       </SectionCard>
 
       {/* Done */}
