@@ -74,7 +74,7 @@ function makeDbChain(rows: unknown[]) {
   chain.leftJoin  = vi.fn().mockReturnValue(chain);
   chain.where     = vi.fn().mockReturnValue(chain);
   chain.limit     = vi.fn().mockResolvedValue(rows);
-  vi.mocked(db.select).mockReturnValue(chain as ReturnType<typeof db.select>);
+  vi.mocked(db.select).mockReturnValue(chain as unknown as ReturnType<typeof db.select>);
 }
 
 beforeEach(() => {

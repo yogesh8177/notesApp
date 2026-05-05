@@ -47,7 +47,7 @@ describe("GET /api/search", () => {
 
   it("returns 403 when user is not an org member", async () => {
     authed();
-    vi.mocked(getMembership).mockResolvedValue(null);
+    vi.mocked(getMembership).mockResolvedValue(null as never);
     const res = await GET(searchReq({ orgId: ORG_ID, q: "hello" }));
     expect(res.status).toBe(403);
   });

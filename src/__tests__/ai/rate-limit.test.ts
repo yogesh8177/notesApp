@@ -4,7 +4,7 @@ import { consumeSummaryToken } from "@/lib/ai/rate-limit";
 // The module holds a reference to a Map on globalThis. Clearing that Map between
 // tests is enough — no module reset needed because consumeSummaryToken takes `nowMs`.
 beforeEach(() => {
-  (globalThis as Record<string, Map<string, unknown> | undefined>).__summaryRateLimit?.clear();
+  (globalThis as unknown as Record<string, Map<string, unknown> | undefined>).__summaryRateLimit?.clear();
 });
 
 describe("consumeSummaryToken", () => {
