@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, isNull, ilike } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   createNote,
@@ -13,7 +13,7 @@ import { searchNotes } from "@/lib/search";
 import { getOrgTimeline } from "@/lib/timeline/queries";
 import { listAgentSessions } from "@/lib/agent/queries";
 import { db } from "@/lib/db/client";
-import { tags, noteTags } from "@/lib/db/schema";
+import { notes, tags, noteTags } from "@/lib/db/schema";
 import type { AgentPrincipal } from "@/lib/agent";
 import { withAudit } from "./audit";
 import { errorToolResult, textToolResult } from "./format";
@@ -178,20 +178,39 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
       title: "Get a note",
       description:
         "Fetch a note's full content, metadata, share list, and version history. " +
+        "Provide either noteId (UUID) or title (exact match within the org). " +
         "Permission is checked against the bound principal.",
       inputSchema: {
-        noteId: z.string().uuid(),
+        noteId: z.string().uuid().optional().describe("Note UUID. Takes precedence over title."),
+        title: z.string().trim().min(1).max(200).optional().describe("Exact note title. Used when noteId is not known."),
       },
     },
-    async ({ noteId }) =>
+    async ({ noteId, title }) =>
       withAudit({
         principal,
         kind: "tool",
         name: "get_note",
-        meta: { noteId },
+        meta: { noteId, title },
         run: async () => {
           try {
-            const { note } = await getNoteDetailForUser(noteId, principal.userId);
+            let resolvedId = noteId;
+            if (!resolvedId) {
+              if (!title) return errorToolResult("Provide either noteId or title.");
+              const [row] = await db
+                .select({ id: notes.id })
+                .from(notes)
+                .where(
+                  and(
+                    eq(notes.orgId, principal.orgId),
+                    ilike(notes.title, title),
+                    isNull(notes.deletedAt),
+                  ),
+                )
+                .limit(1);
+              if (!row) return errorToolResult(`NOT_FOUND: No note titled "${title}".`);
+              resolvedId = row.id;
+            }
+            const { note } = await getNoteDetailForUser(resolvedId, principal.userId);
             return textToolResult({
               id: note.id,
               title: note.title,
