@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentSessions,
@@ -6,12 +6,16 @@ import {
   conversationTurns,
   noteVersions,
   notes,
+  noteTags,
+  tags,
   sessionEpochSummaries,
 } from "@/lib/db/schema";
 import { audit } from "@/lib/log/audit";
 import { log } from "@/lib/log";
 import { enqueueSync } from "@/lib/graph/queue";
 import { compactCheckpoints } from "@/lib/ai/compact";
+import { getBootstrapGraphContext } from "@/lib/graph/queries";
+import type { GraphHotspot } from "@/lib/graph/queries";
 import type { AgentPrincipal } from "./auth";
 import type { BootstrapInput, CheckpointInput } from "./schemas";
 
@@ -37,6 +41,12 @@ export interface TailTurnEntry {
   content: string;
 }
 
+export interface ProjectNote {
+  id: string;
+  title: string;
+  excerpt: string;
+}
+
 export interface BootstrapResult {
   sessionNoteId: string;
   guidelines: string;
@@ -44,6 +54,8 @@ export interface BootstrapResult {
   epochSummaries: EpochSummaryEntry[];
   recentConversation: ConversationSummaryEntry[];
   tailTurns: TailTurnEntry[];
+  projectNotes: ProjectNote[];
+  graphHotspots: GraphHotspot[];
 }
 
 export interface CheckpointResult {
@@ -68,6 +80,33 @@ async function loadGuidelines(orgId: string): Promise<string> {
     )
     .limit(1);
   return row?.content ?? "";
+}
+
+/**
+ * Notes explicitly tagged for agent context: #context, #architecture,
+ * #decisions, or #project-memory. Truncated to 1500 chars each so they
+ * fit in the bootstrap window without crowding out the checkpoint.
+ */
+async function loadProjectNotes(orgId: string): Promise<ProjectNote[]> {
+  const CONTEXT_TAGS = ["context", "architecture", "decisions", "project-memory"];
+  const rows = await db
+    .selectDistinctOn([notes.id], {
+      id: notes.id,
+      title: notes.title,
+      content: notes.content,
+    })
+    .from(notes)
+    .innerJoin(noteTags, eq(noteTags.noteId, notes.id))
+    .innerJoin(tags, eq(tags.id, noteTags.tagId))
+    .where(
+      and(
+        eq(notes.orgId, orgId),
+        isNull(notes.deletedAt),
+        inArray(tags.name, CONTEXT_TAGS),
+      ),
+    )
+    .limit(3);
+  return rows.map((r) => ({ id: r.id, title: r.title, excerpt: r.content.slice(0, 1500) }));
 }
 
 async function loadEpochSummaries(noteId: string): Promise<EpochSummaryEntry[]> {
@@ -235,14 +274,26 @@ export async function bootstrap(
   // anything else = inject checkpoint, epochs, and recent tail turns for orientation.
   const skipCheckpoint = input.source === "clear";
 
-  const [guidelines, latestCheckpoint, epochSummaries, tailTurns] = await Promise.all([
-    loadGuidelines(orgId),
-    skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
-    skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
-    skipCheckpoint ? Promise.resolve([]) : loadTailTurns(noteId),
-  ]);
+  const [guidelines, latestCheckpoint, epochSummaries, tailTurns, projectNotes, graphHotspots] =
+    await Promise.all([
+      loadGuidelines(orgId),
+      skipCheckpoint ? Promise.resolve("") : loadLatestCheckpoint(noteId),
+      skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
+      skipCheckpoint ? Promise.resolve([]) : loadTailTurns(noteId),
+      loadProjectNotes(orgId),
+      getBootstrapGraphContext(orgId),
+    ]);
 
-  return { sessionNoteId: noteId, guidelines, latestCheckpoint, epochSummaries, recentConversation: [], tailTurns };
+  return {
+    sessionNoteId: noteId,
+    guidelines,
+    latestCheckpoint,
+    epochSummaries,
+    recentConversation: [],
+    tailTurns,
+    projectNotes,
+    graphHotspots,
+  };
 }
 
 function renderCheckpoint(input: CheckpointInput): string {

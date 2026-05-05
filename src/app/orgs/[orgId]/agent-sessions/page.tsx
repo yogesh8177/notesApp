@@ -3,7 +3,7 @@ import { and, desc, eq, ilike, inArray, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { noteVersions, notes, users } from "@/lib/db/schema";
-import { parseCheckpoint } from "../notes/[noteId]/dashboard/page";
+import { parseCheckpoint } from "../notes/[noteId]/dashboard/parse-checkpoint";
 import { HealthBadge } from "../notes/[noteId]/dashboard/health-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 

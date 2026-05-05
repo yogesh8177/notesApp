@@ -220,3 +220,39 @@ export async function getNodePreview(
 ): Promise<GraphData | null> {
   return getNodeNeighborhood(type, id, 1, 15);
 }
+
+export interface GraphHotspot {
+  id: string;
+  title: string;
+  refCount: number;
+}
+
+/**
+ * Top notes by agent reference count across the org.
+ * Used at bootstrap to inject "knowledge hotspots" — notes agents rely on most.
+ * Returns [] gracefully when Neo4j is unavailable.
+ */
+export async function getBootstrapGraphContext(orgId: string): Promise<GraphHotspot[]> {
+  const driver = getDriver();
+  if (!driver) return [];
+
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (ct:ConversationTurn {orgId: $orgId})-[:REFERENCES]->(n:Note {orgId: $orgId})
+       RETURN n.id AS id, n.title AS title, count(ct) AS refCount
+       ORDER BY refCount DESC LIMIT 5`,
+      { orgId },
+    );
+    return result.records.map((r) => ({
+      id: r.get("id") as string,
+      title: r.get("title") as string,
+      refCount: Number(r.get("refCount")),
+    }));
+  } catch (err) {
+    log.warn({ err, orgId }, "graph.bootstrap.context.failed");
+    return [];
+  } finally {
+    await session.close();
+  }
+}
