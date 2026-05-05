@@ -102,6 +102,7 @@ function parseCommitOutput(output) {
 
   const decisions = [...new Set(session.accumulatedDecisions ?? [])];
   const issues = [...new Set(session.accumulatedIssues ?? [])];
+  const next = [...new Set(session.accumulatedNext ?? [])];
   done = [...new Set(done)];
 
   try {
@@ -114,7 +115,7 @@ function parseCommitOutput(output) {
       repoUrl: ctx.repoUrl,
       body,
       done,
-      next: [],
+      next,
       issues,
       decisions,
     });

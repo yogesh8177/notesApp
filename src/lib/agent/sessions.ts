@@ -302,6 +302,25 @@ export async function bootstrap(
   };
 }
 
+function extractListSection(content: string, header: string): string[] {
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = content.match(new RegExp(`### ${escaped}\\n((?:- [^\\n]+\\n?|_\\(none\\)_\\n?)*)`));
+  if (!m?.[1]?.trim() || m[1].trim() === "_(none)_") return [];
+  return m[1]
+    .trim()
+    .split("\n")
+    .map((l) => l.replace(/^- /, "").trim())
+    .filter(Boolean);
+}
+
+function setListSection(content: string, header: string, items: string[]): string {
+  const list = items.length ? items.map((x) => `- ${x}`).join("\n") : "_(none)_";
+  const replacement = `### ${header}\n${list}\n`;
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`### ${escaped}\\n(?:(?:- [^\\n]+|_\\(none\\)_)\\n?)*`);
+  return regex.test(content) ? content.replace(regex, replacement) : `${content}\n${replacement}`;
+}
+
 function renderCheckpoint(input: CheckpointInput): string {
   const ts = new Date().toISOString();
   const list = (xs: string[]) =>
@@ -353,7 +372,6 @@ export async function checkpoint(
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<CheckpointOutcome> {
   const { orgId, userId } = principal;
-  const body = renderCheckpoint(input);
 
   const result = await db.transaction(async (tx) => {
     const [note] = await tx
@@ -361,6 +379,7 @@ export async function checkpoint(
         id: notes.id,
         orgId: notes.orgId,
         title: notes.title,
+        content: notes.content,
         currentVersion: notes.currentVersion,
         deletedAt: notes.deletedAt,
       })
@@ -374,6 +393,16 @@ export async function checkpoint(
     if (note.orgId !== orgId) {
       return { kind: "error" as const, error: "FORBIDDEN" as const };
     }
+
+    // Carry forward any Decisions/Next/Issues written directly to the note
+    // (e.g. via log_turn) that haven't been included in input from the local accumulator.
+    const mergedInput: CheckpointInput = {
+      ...input,
+      decisions: [...new Set([...extractListSection(note.content, "Decisions"), ...input.decisions])],
+      next: [...new Set([...extractListSection(note.content, "Next"), ...input.next])],
+      issues: [...new Set([...extractListSection(note.content, "Issues"), ...input.issues])],
+    };
+    const body = renderCheckpoint(mergedInput);
 
     // Atomically claim the next version number. PostgreSQL row-level locking
     // on this UPDATE serialises concurrent checkpoint calls that would otherwise
@@ -506,4 +535,50 @@ async function maybeCompactEpoch(
   } catch (err) {
     log.error({ noteId, epochStart, epochEnd, err }, "agent.session.epoch.compact.failed");
   }
+}
+
+/**
+ * Write decisions and/or next-steps directly into the session note content.
+ * Called by log_turn when the agent provides these fields. The items are merged
+ * into the existing ### Decisions / ### Next sections so they survive the next
+ * checkpoint (checkpoint() reads and carries them forward before overwriting).
+ */
+export async function mergePendingItems(
+  orgId: string,
+  sessionNoteId: string,
+  decisions: string[],
+  next: string[],
+  issues: string[],
+): Promise<void> {
+  if (!decisions.length && !next.length && !issues.length) return;
+
+  await db.transaction(async (tx) => {
+    const [note] = await tx
+      .select({ id: notes.id, orgId: notes.orgId, content: notes.content, deletedAt: notes.deletedAt })
+      .from(notes)
+      .where(and(eq(notes.id, sessionNoteId), isNull(notes.deletedAt)))
+      .limit(1);
+
+    if (!note || note.orgId !== orgId) return;
+
+    const merged = [...new Set([...extractListSection(note.content, "Decisions"), ...decisions])];
+    const mergedNext = [...new Set([...extractListSection(note.content, "Next"), ...next])];
+    const mergedIssues = [...new Set([...extractListSection(note.content, "Issues"), ...issues])];
+
+    if (!merged.length && !mergedNext.length && !mergedIssues.length) return;
+
+    let updated = note.content;
+    if (merged.length) updated = setListSection(updated, "Decisions", merged);
+    if (mergedNext.length) updated = setListSection(updated, "Next", mergedNext);
+    if (mergedIssues.length) updated = setListSection(updated, "Issues", mergedIssues);
+    if (updated === note.content) return;
+
+    // Update content only — no currentVersion bump and no noteVersions row.
+    // checkpoint() reads this content and carries Decisions/Next forward when
+    // it writes the next real version, keeping version history clean.
+    await tx
+      .update(notes)
+      .set({ content: updated, updatedAt: new Date() })
+      .where(eq(notes.id, note.id));
+  });
 }

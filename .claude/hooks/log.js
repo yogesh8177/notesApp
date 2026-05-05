@@ -6,6 +6,7 @@
  *   node .claude/hooks/log.js done "feat(notes): note creation via subagent"
  *   node .claude/hooks/log.js decision "Chose X over Y because Z"
  *   node .claude/hooks/log.js issue "Race condition in file upload handler"
+ *   node .claude/hooks/log.js next "Implement search pagination"
  *
  * Use `done` to manually credit subagent work into the parent's done list,
  * since subagent commits accumulate into the subagent's own session, not the parent's.
@@ -17,8 +18,8 @@ const { withLock, loadCurrentSession, loadSession, saveSession } = require("./_l
 const [, , type, ...rest] = process.argv;
 const text = rest.join(" ").trim();
 
-if (!["done", "decision", "issue"].includes(type) || !text) {
-  process.stderr.write("Usage: log.js <done|decision|issue> <text>\n");
+if (!["done", "decision", "issue", "next"].includes(type) || !text) {
+  process.stderr.write("Usage: log.js <done|decision|issue|next> <text>\n");
   process.exit(1);
 }
 
@@ -34,7 +35,10 @@ if (!session?.sessionNoteId) {
   process.exit(1);
 }
 
-const key = type === "done" ? "accumulatedDone" : type === "decision" ? "accumulatedDecisions" : "accumulatedIssues";
+const key = type === "done" ? "accumulatedDone"
+  : type === "decision" ? "accumulatedDecisions"
+  : type === "next" ? "accumulatedNext"
+  : "accumulatedIssues";
 
 withLock(current.sessionId, () => {
   // Re-read under lock so concurrent callers don't lose each other's items.

@@ -507,26 +507,45 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
           )
           .max(20)
           .default([]),
+        decisions: z
+          .array(z.string().trim().min(1).max(500))
+          .max(20)
+          .optional()
+          .describe("Architectural decisions made this turn. Written into the session note's Decisions section."),
+        next: z
+          .array(z.string().trim().min(1).max(500))
+          .max(20)
+          .optional()
+          .describe("Next steps identified this turn. Written into the session note's Next section."),
+        issues: z
+          .array(z.string().trim().min(1).max(500))
+          .max(20)
+          .optional()
+          .describe("Bugs or issues found this turn. Written into the session note's Issues section."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    async ({ sessionNoteId, summary, noteRefs }) =>
+    async ({ sessionNoteId, summary, noteRefs, decisions, next, issues }) =>
       withAudit({
         principal,
         kind: "tool",
         name: "log_turn",
-        meta: { sessionNoteId, summaryLength: summary.length, noteRefCount: noteRefs.length },
+        meta: { sessionNoteId, summaryLength: summary.length, noteRefCount: noteRefs.length, decisionsCount: decisions?.length ?? 0, nextCount: next?.length ?? 0, issuesCount: issues?.length ?? 0 },
         run: async () => {
           try {
             const { addTurn } = await import("@/lib/agent/conversation");
-            const result = await addTurn({
-              orgId: principal.orgId,
-              sessionNoteId,
-              role: "assistant",
-              content: summary,
-              noteRefs,
-            });
-            return textToolResult({ turnIndex: result.turnIndex });
+            const { mergePendingItems } = await import("@/lib/agent/sessions");
+            const [turnResult] = await Promise.all([
+              addTurn({
+                orgId: principal.orgId,
+                sessionNoteId,
+                role: "assistant",
+                content: summary,
+                noteRefs,
+              }),
+              mergePendingItems(principal.orgId, sessionNoteId, decisions ?? [], next ?? [], issues ?? []),
+            ]);
+            return textToolResult({ turnIndex: turnResult.turnIndex });
           } catch (err) {
             return errorToolResult(err instanceof Error ? err.message : "Failed to log turn");
           }
