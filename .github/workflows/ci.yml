@@ -18,6 +18,12 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Pin npm to the same major version used to generate the lock file (npm 11).
+      # GitHub Actions bundles npm 10 with Node 20; mismatched versions cause
+      # "package.json and package-lock.json are out of sync" errors with npm ci.
+      - name: Pin npm version
+        run: npm install -g npm@11
+
       - name: Install dependencies
         run: npm ci
 
@@ -49,6 +55,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - name: Pin npm version
+        run: npm install -g npm@11
 
       - name: Install dependencies
         run: npm ci
