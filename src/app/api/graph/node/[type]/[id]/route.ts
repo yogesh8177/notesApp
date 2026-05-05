@@ -6,6 +6,7 @@ import { ok, err, toResponse } from "@/lib/validation/result";
 import { syncNode } from "@/lib/graph/sync";
 import { getNodeNeighborhood, isStale, type NeighborhoodOptions } from "@/lib/graph/queries";
 import { getDriver, ensureIndexes } from "@/lib/graph/client";
+import { getMembership } from "@/lib/auth/org";
 import type { GraphNodeType } from "@/lib/graph/types";
 
 const VALID_TYPES: GraphNodeType[] = [
@@ -20,7 +21,7 @@ const VALID_TYPES: GraphNodeType[] = [
 const querySchema = z.object({
   depth: z.coerce.number().int().min(1).max(4).optional().default(2),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
-  orgId: z.string().uuid().optional(),
+  orgId: z.string().uuid(), // required — scopes traversal to this org and verifies membership
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
 });
@@ -51,7 +52,14 @@ export async function GET(
   }
 
   const { depth, limit, orgId, from, to } = parsed.data;
-  const dateOpts: NeighborhoodOptions = { from, to };
+
+  // Verify the requesting user is a member of the org they're scoping to.
+  const membership = await getMembership(orgId, user.id);
+  if (!membership) {
+    return toResponse(err("FORBIDDEN", "Not a member of this org"));
+  }
+
+  const queryOpts: NeighborhoodOptions = { orgId, from, to };
 
   if (!getDriver()) {
     return NextResponse.json(
@@ -64,15 +72,15 @@ export async function GET(
   void ensureIndexes();
 
   try {
-    let data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
+    let data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, queryOpts);
 
-    if (!data && orgId) {
+    if (!data) {
       // Node missing from Neo4j — blocking sync then re-fetch
       await syncNode(type as GraphNodeType, id, orgId).catch((e) =>
         log.warn({ e, type, id }, "graph.node.sync.error")
       );
-      data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, dateOpts);
-    } else if (data && isStale(data, id) && orgId) {
+      data = await getNodeNeighborhood(type as GraphNodeType, id, depth, limit, queryOpts);
+    } else if (isStale(data, id)) {
       // Node present but stale — background re-sync so response stays fast
       syncNode(type as GraphNodeType, id, orgId).catch((e) =>
         log.warn({ e, type, id }, "graph.node.background_sync.error")

@@ -116,12 +116,12 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
       }
     );
 
-    // Author
+    // Author — User nodes are cross-org; no orgId stored to avoid last-writer-wins corruption.
     if (author) {
       await tx.run(
         `MERGE (u:User {id: $id})
-         SET u.orgId = $orgId, u.email = $email, u.displayName = $displayName, u.syncedAt = $syncedAt`,
-        { id: author.id, orgId, email: author.email, displayName: author.displayName ?? "", syncedAt }
+         SET u.email = $email, u.displayName = $displayName, u.syncedAt = $syncedAt`,
+        { id: author.id, email: author.email, displayName: author.displayName ?? "", syncedAt }
       );
       await tx.run(
         `MATCH (u:User {id: $userId}), (n:Note {id: $noteId}) MERGE (u)-[:AUTHORED]->(n)`,
@@ -167,8 +167,8 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
       await tx.run(
         `UNWIND $shares AS s
          MERGE (u:User {id: s.userId})
-         SET u.orgId = $orgId, u.email = s.email, u.displayName = s.displayName, u.syncedAt = $syncedAt`,
-        { shares: sharedData, orgId, syncedAt }
+         SET u.email = s.email, u.displayName = s.displayName, u.syncedAt = $syncedAt`,
+        { shares: sharedData, syncedAt }
       );
       await tx.run(
         `UNWIND $shares AS s
@@ -449,8 +449,8 @@ async function syncAuditEvent(session: Neo4jSession, eventIdStr: string, orgId: 
     if (actor) {
       await tx.run(
         `MERGE (u:User {id: $id})
-         SET u.orgId = $orgId, u.email = $email, u.displayName = $displayName, u.syncedAt = $syncedAt`,
-        { id: actor.id, orgId, email: actor.email, displayName: actor.displayName ?? "", syncedAt }
+         SET u.email = $email, u.displayName = $displayName, u.syncedAt = $syncedAt`,
+        { id: actor.id, email: actor.email, displayName: actor.displayName ?? "", syncedAt }
       );
       await tx.run(
         `MATCH (u:User {id: $userId}), (ae:AuditEvent {id: $eventId}) MERGE (u)-[:PERFORMED]->(ae)`,
@@ -486,8 +486,8 @@ async function syncUser(session: Neo4jSession, userId: string, orgId: string): P
   await session.executeWrite(async (tx) => {
     await tx.run(
       `MERGE (u:User {id: $id})
-       SET u.orgId = $orgId, u.email = $email, u.displayName = $displayName, u.syncedAt = $syncedAt`,
-      { id: user.id, orgId, email: user.email, displayName: user.displayName ?? "", syncedAt }
+       SET u.email = $email, u.displayName = $displayName, u.syncedAt = $syncedAt`,
+      { id: user.id, email: user.email, displayName: user.displayName ?? "", syncedAt }
     );
   });
 }

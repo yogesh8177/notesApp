@@ -25,6 +25,7 @@ function nodeLabel(type: GraphNodeType, props: Record<string, unknown>): string 
 export interface NeighborhoodOptions {
   depth?: number;
   limit?: number;
+  orgId?: string; // when provided, center node and all traversed neighbors are filtered to this org
   from?: string; // ISO date string, inclusive
   to?: string;   // ISO date string, inclusive
 }
@@ -40,15 +41,25 @@ export function isStale(data: GraphData, id: string): boolean {
   return Date.now() - new Date(raw).getTime() > SYNC_TTL_MS;
 }
 
-/** Build a Cypher WHERE clause and params for date-range filtering on neighbor.createdAt. */
-function buildDateWhere(from?: string, to?: string): { clause: string; params: Record<string, string> } {
-  if (!from && !to) return { clause: "", params: {} };
-  const params: Record<string, string> = {};
+/** Build a Cypher WHERE clause and params for org + date filtering on neighbor. */
+function buildNeighborWhere(
+  orgId?: string,
+  from?: string,
+  to?: string,
+): { clause: string; params: Record<string, string | null> } {
   const conditions: string[] = [];
-  if (from) { conditions.push("neighbor.createdAt >= $dateFrom"); params.dateFrom = from; }
-  if (to)   { conditions.push("neighbor.createdAt <= $dateTo");   params.dateTo   = to;   }
+  const params: Record<string, string | null> = {};
+
+  if (orgId) {
+    // User nodes are cross-org — exempt them so multi-org membership doesn't hide authors/actors.
+    conditions.push("('User' IN labels(neighbor) OR neighbor.orgId = $orgId)");
+    params.orgId = orgId;
+  }
+  if (from) { conditions.push("(neighbor.createdAt IS NULL OR neighbor.createdAt >= $dateFrom)"); params.dateFrom = from; }
+  if (to)   { conditions.push("(neighbor.createdAt IS NULL OR neighbor.createdAt <= $dateTo)");   params.dateTo   = to;   }
+
   return {
-    clause: `WHERE (neighbor.createdAt IS NULL OR (${conditions.join(" AND ")}))`,
+    clause: conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "",
     params,
   };
 }
@@ -67,20 +78,25 @@ export async function getNodeNeighborhood(
   const driver = getDriver();
   if (!driver) return null;
 
+  const { orgId, from, to } = opts;
   const session = driver.session();
   try {
-    // APOC path: label added to center MATCH so Neo4j can use the uniqueness index.
+    // APOC path: enforce orgId on center node so cross-org IDs return nothing.
+    const centerFilter = orgId ? `{id: $id, orgId: $orgId}` : `{id: $id}`;
+    const apocParams: Record<string, unknown> = { id, depth: neo4j.int(depth), limit: neo4j.int(limit) };
+    if (orgId) apocParams.orgId = orgId;
+
     const result = await session.run(
-      `MATCH (center:${type} {id: $id})
+      `MATCH (center:${type} ${centerFilter})
        CALL apoc.path.subgraphAll(center, {maxLevel: $depth, limit: $limit}) YIELD nodes, relationships
        RETURN nodes, relationships`,
-      { id, depth: neo4j.int(depth), limit: neo4j.int(limit) }
+      apocParams
     );
 
     if (result.records.length > 0) {
       const data = buildGraphData(result.records[0].get("nodes"), result.records[0].get("relationships"), id);
-      // APOC doesn't support inline date filtering — apply in JS.
-      return filterByDate(data, opts.from, opts.to);
+      // APOC doesn't support inline property filtering — apply org + date in JS.
+      return applyFilters(data, orgId, from, to);
     }
 
     return await fallbackNeighborhood(session, type, id, depth, limit, opts);
@@ -97,19 +113,28 @@ export async function getNodeNeighborhood(
   }
 }
 
-/** JS-side date filter — used only for the APOC path. */
-function filterByDate(data: GraphData, from?: string, to?: string): GraphData {
-  if (!from && !to) return data;
+/** JS-side org + date filter — used only for the APOC path (which can't filter inline). */
+function applyFilters(data: GraphData, orgId?: string, from?: string, to?: string): GraphData {
+  if (!orgId && !from && !to) return data;
   const fromTs = from ? new Date(from).getTime() : -Infinity;
   const toTs   = to   ? new Date(to).getTime()   :  Infinity;
 
   const keepIds = new Set<string>();
-  keepIds.add(data.centerNodeId);
+  keepIds.add(data.centerNodeId); // center is already org-scoped by the MATCH clause
   for (const node of data.nodes) {
+    if (node.id === data.centerNodeId) continue;
+    // Org filter: User nodes are cross-org, pass through. All others must match.
+    if (orgId && node.type !== "User") {
+      const nodeOrg = node.properties.orgId as string | undefined;
+      if (nodeOrg && nodeOrg !== orgId) continue;
+    }
+    // Date filter: nodes without createdAt always pass.
     const raw = node.properties.createdAt as string | undefined;
-    if (!raw) { keepIds.add(node.id); continue; } // no date → always keep
-    const ts = new Date(raw).getTime();
-    if (ts >= fromTs && ts <= toTs) keepIds.add(node.id);
+    if (raw) {
+      const ts = new Date(raw).getTime();
+      if (ts < fromTs || ts > toTs) continue;
+    }
+    keepIds.add(node.id);
   }
 
   return {
@@ -128,13 +153,16 @@ async function fallbackNeighborhood(
   opts: NeighborhoodOptions = {}
 ): Promise<GraphData | null> {
   const safeDepth = Math.min(depth, 4);
-  // Date filter pushed into Cypher so we don't over-fetch and discard in JS.
-  const { clause: dateWhere, params: dateParams } = buildDateWhere(opts.from, opts.to);
+  const { orgId, from, to } = opts;
+  // Org + date filters pushed into Cypher so we don't over-fetch and discard in JS.
+  const { clause: neighborWhere, params: neighborParams } = buildNeighborWhere(orgId, from, to);
+  const centerFilter = orgId ? `{id: $id, orgId: $orgId}` : `{id: $id}`;
+  const centerParams: Record<string, unknown> = orgId ? { id, orgId } : { id };
 
   const result = await session.run(
-    `MATCH (center:${type} {id: $id})
+    `MATCH (center:${type} ${centerFilter})
      OPTIONAL MATCH path = (center)-[*1..${safeDepth}]-(neighbor)
-     ${dateWhere}
+     ${neighborWhere}
      WITH center, neighbor, path LIMIT $limit
      WITH center, collect(DISTINCT neighbor) AS neighbors,
           collect(DISTINCT relationships(path)) AS relPaths
@@ -143,14 +171,14 @@ async function fallbackNeighborhood(
      UNWIND relPaths AS rels
      UNWIND rels AS r
      RETURN allNodes AS nodes, collect(DISTINCT r) AS relationships`,
-    { id, limit: neo4j.int(limit), ...dateParams }
+    { ...centerParams, limit: neo4j.int(limit), ...neighborParams }
   );
 
   if (result.records.length === 0) {
-    // No paths — try to return just the center node.
+    // No paths — try to return just the center node (org-scoped).
     const centerResult = await session.run(
-      `MATCH (n:${type} {id: $id}) RETURN n`,
-      { id }
+      `MATCH (n:${type} ${centerFilter}) RETURN n`,
+      centerParams
     );
     if (centerResult.records.length === 0) return null;
     const node = centerResult.records[0].get("n");
@@ -165,7 +193,7 @@ async function fallbackNeighborhood(
   }
 
   const record = result.records[0];
-  // Date already filtered in Cypher — no JS post-filter needed here.
+  // Org + date already filtered in Cypher — no JS post-filter needed here.
   return buildGraphData(record.get("nodes"), record.get("relationships"), id);
 }
 
@@ -216,9 +244,10 @@ function buildGraphData(
 /** Shallow preview — depth=1, limit=15, for hover popover. */
 export async function getNodePreview(
   type: GraphNodeType,
-  id: string
+  id: string,
+  orgId?: string
 ): Promise<GraphData | null> {
-  return getNodeNeighborhood(type, id, 1, 15);
+  return getNodeNeighborhood(type, id, 1, 15, orgId ? { orgId } : {});
 }
 
 export interface GraphHotspot {
