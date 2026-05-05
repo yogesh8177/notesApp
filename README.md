@@ -1,5 +1,7 @@
 # Collab Memory
 
+[![CI](https://github.com/yogesh8177/notesApp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yogesh8177/notesApp/actions/workflows/ci.yml)
+
 ![CollabNotes hero infographic](./assets/infographic-79aa905e-01b1-425a-a5db-6b9921224540.png)
 
 **Collab Memory** is a shared memory layer for human teams and AI agents. Every note, conversation, decision, and agent action lands in the same searchable, versioned, org-scoped workspace. Humans write notes; agents read context and checkpoint progress — and both show up in the same audit trail and graph.
