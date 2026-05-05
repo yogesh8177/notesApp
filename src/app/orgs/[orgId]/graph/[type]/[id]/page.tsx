@@ -108,10 +108,10 @@ NEO4J_PASSWORD=your-password`}
   }
 
   // Fetch first; sync if missing or stale (blocking — this is SSR, data must be fresh)
-  let initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50);
+  let initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50, { orgId });
   if (!initialData || isStale(initialData, id)) {
     await syncNode(type as GraphNodeType, id, orgId).catch(() => null);
-    initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50);
+    initialData = await getNodeNeighborhood(type as GraphNodeType, id, 2, 50, { orgId });
   }
 
   return (
