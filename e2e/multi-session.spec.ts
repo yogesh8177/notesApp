@@ -65,7 +65,10 @@ async function createNote(page: Page, orgId: string, title: string, content: str
   await page.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption(visibility);
   await page.getByRole("button", { name: "Create note" }).click();
   await page.waitForURL(`**/orgs/${orgId}/notes/**`, { timeout: 10_000 });
-  return page.url();
+  // Strip ?message=Note%20created. so callers start on a clean URL
+  const cleanUrl = page.url().split("?")[0];
+  await page.goto(cleanUrl);
+  return cleanUrl;
 }
 
 test("note created by user A is visible to user B after reload", async () => {
@@ -109,7 +112,7 @@ test("concurrent edits — last write wins without corrupting versions", async (
   await pageA.locator("textarea[name=content]").fill("User A edit.");
   await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await pageA.getByRole("button", { name: "Save changes" }).click();
-  await pageA.waitForURL(/\?message=/, { timeout: 10_000 });
+  await pageA.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
   await pageA.waitForLoadState("load");
   await expect(pageA.getByText(/version 2/)).toBeVisible({ timeout: 15_000 });
 
@@ -143,7 +146,7 @@ test("author changes visibility private→org; user B can now see note in list",
   await pageA.locator("select[name=visibility]").selectOption("org");
   await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await pageA.getByRole("button", { name: "Save changes" }).click();
-  await pageA.waitForURL(/\?message=/, { timeout: 10_000 });
+  await pageA.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
 
   // User B refreshes list — note should now be visible
   await pageB.goto(`/orgs/${org.id}/notes`);

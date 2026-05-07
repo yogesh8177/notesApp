@@ -44,8 +44,10 @@ async function createNote(page: import("@playwright/test").Page, orgId: string, 
   await page.locator("textarea[name=content]").fill(content);
   await page.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption(visibility);
   await page.getByRole("button", { name: "Create note" }).click();
-  // Action redirects to detail page
+  // Action redirects to detail page with ?message=Note%20created. — navigate to clean URL
+  // so subsequent waitForURL calls don't match the already-present ?message= param.
   await page.waitForURL(`**/orgs/${orgId}/notes/**`, { timeout: 10_000 });
+  await page.goto(page.url().split("?")[0]);
 }
 
 test("notes list page loads for org member", async ({ page }) => {
@@ -86,7 +88,7 @@ test("edit note content bumps version", async ({ page }) => {
   await page.getByRole("button", { name: "Save changes" }).click();
 
   // Action redirects to same page with ?message= — wait for page to fully render before asserting
-  await page.waitForURL(/\?message=/, { timeout: 10_000 });
+  await page.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
   await page.waitForLoadState("load");
   await expect(page.getByText(/version 2/)).toBeVisible({ timeout: 15_000 });
 });

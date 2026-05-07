@@ -44,13 +44,15 @@ test("history page shows diff between v1 and v2 after an edit", async ({ page })
   await page.locator("textarea[name=content]").fill("Version one body.");
   await page.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
   await page.getByRole("button", { name: "Create note" }).click();
+  // Strip ?message=Note%20created. so the next waitForURL waits for the actual update redirect
   await page.waitForURL(`**/orgs/${org.id}/notes/**`, { timeout: 10_000 });
+  await page.goto(page.url().split("?")[0]);
 
   // Edit to produce v2 — wait for React hydration before clicking save
   await page.locator("textarea[name=content]").fill("Version two body.");
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await page.getByRole("button", { name: "Save changes" }).click();
-  await page.waitForURL(/\?message=/, { timeout: 10_000 });
+  await page.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
   await page.waitForLoadState("load");
 
   // Navigate to history
