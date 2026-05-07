@@ -52,7 +52,7 @@ test("history page shows diff between v1 and v2 after an edit", async ({ page })
   await page.locator("textarea[name=content]").fill("Version two body.");
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await page.getByRole("button", { name: "Save changes" }).click();
-  await page.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
+  await page.waitForURL(/message=Note%20updated/, { timeout: 10_000, waitUntil: "commit" });
   await page.waitForLoadState("load");
 
   // Navigate to history

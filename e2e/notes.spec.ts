@@ -88,7 +88,7 @@ test("edit note content redirects with success message", async ({ page }) => {
 
   // Action redirects with ?message=Note%20updated. — confirms save reached the server
   // Version number assertion belongs in crud.integration.test.ts, not a browser test
-  await page.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
+  await page.waitForURL(/message=Note%20updated/, { timeout: 10_000, waitUntil: "commit" });
 });
 
 test("saving without changes keeps version the same (no-op guard)", async ({ page }) => {

@@ -109,7 +109,7 @@ test("user A edit saves successfully and content is visible to user B", async ()
   await pageA.locator("textarea[name=content]").fill("User A edit.");
   await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await pageA.getByRole("button", { name: "Save changes" }).click();
-  await pageA.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
+  await pageA.waitForURL(/message=Note%20updated/, { timeout: 10_000, waitUntil: "commit" });
 
   // User B loads the note and sees the updated content
   await pageB.goto(noteUrl);
@@ -129,7 +129,7 @@ test("author changes visibility private→org; user B can now see note in list",
   await pageA.locator("select[name=visibility]").selectOption("org");
   await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await pageA.getByRole("button", { name: "Save changes" }).click();
-  await pageA.waitForURL(/message=Note%20updated/, { timeout: 10_000 });
+  await pageA.waitForURL(/message=Note%20updated/, { timeout: 10_000, waitUntil: "commit" });
 
   // User B refreshes list — note should now be visible
   await pageB.goto(`/orgs/${org.id}/notes`);
