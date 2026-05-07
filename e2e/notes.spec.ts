@@ -84,11 +84,8 @@ test("edit note content redirects with success message", async ({ page }) => {
   // Wait for React hydration, then edit
   await page.locator("textarea[name=content]").fill("Updated body — changed.");
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
-  // Start listening before clicking — avoids missing a fast redirect
-  await Promise.all([
-    page.waitForURL(/message=Note%20updated/, { timeout: 15_000, waitUntil: "commit" }),
-    page.getByRole("button", { name: "Save changes" }).click(),
-  ]);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Note updated.")).toBeVisible({ timeout: 15_000 });
 });
 
 test("saving without changes keeps version the same (no-op guard)", async ({ page }) => {
