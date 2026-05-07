@@ -1,6 +1,6 @@
 {
   "name": "collab-memory",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "license": "MIT",
   "bin": {
     "collab-memory": "./bin/notes-app.js"
