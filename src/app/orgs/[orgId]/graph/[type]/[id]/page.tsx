@@ -133,6 +133,7 @@ NEO4J_PASSWORD=your-password`}
 
       <div className="flex-1 overflow-hidden rounded-lg border">
         <GraphPageClient
+          key={id}
           initialData={initialData}
           centerType={type as GraphNodeType}
           centerId={id}
