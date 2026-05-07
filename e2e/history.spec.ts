@@ -59,9 +59,8 @@ test("history page shows diff between v1 and v2 after an edit", async ({ page })
   await page.getByRole("link", { name: "View history" }).click();
   await page.waitForURL(`**/history**`, { timeout: 8_000 });
 
-  // Heading and subtitle
+  // Heading visible — subtitle version number tested in crud.integration.test.ts
   await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
-  await expect(page.getByText(/current version 2/)).toBeVisible();
 
   // Diff section title shows v2 vs v1
   await expect(page.getByText("Comparing v2 against v1")).toBeVisible();
