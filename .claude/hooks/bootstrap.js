@@ -7,6 +7,19 @@ const { detectContext, readStdin, saveSession, saveCurrentSession, api } = requi
   const source = input.source || "startup";
   const ctx = detectContext();
 
+  // Warn early so the model knows memory is inactive — no silent failure.
+  if (!process.env.MEMORY_AGENT_TOKEN) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext:
+          "⚠ MEMORY_AGENT_TOKEN is not set. Session logging and memory recall are disabled.\n" +
+          "Run `npx collab-memory hooks-setup` to configure the token.",
+      },
+    }));
+    return;
+  }
+
   try {
     const res = await api("POST", "/agent/bootstrap", {
       repo: ctx.repo,

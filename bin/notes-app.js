@@ -132,7 +132,10 @@ const SETTINGS_TEMPLATE = {
     SubagentStop:  [{ hooks: [{ type: "command", command: "node .claude/hooks/event.js" }] }],
     Stop:          [{ hooks: [{ type: "command", command: "node .claude/hooks/stop.js" }] }],
     PreCompact:    [{ hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }] }],
-    SessionEnd:    [{ hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }] }],
+    SessionEnd: [
+      { hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }] },
+      { hooks: [{ type: "command", command: "node .claude/hooks/stop.js" }] },
+    ],
   },
 };
 

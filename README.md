@@ -13,27 +13,34 @@ The app is designed around one idea: **an AI agent should have the same persiste
 ## Quick start
 
 ```bash
-# 1. Configure environment variables
+# 1. Configure .env (Supabase URLs, API keys, app URL)
 npx collab-memory setup
 
-# 2. Wire Claude Code hooks + MCP into this project
-npx collab-memory hooks-setup
-
-# 3. Apply database migrations
+# 2. Apply database migrations
 npx collab-memory migrate
 
-# 4. Start the dev server
+# 3. Start the dev server
 npx collab-memory dev
+```
+
+Then in your browser:
+1. Sign in and create an org.
+2. Go to **Org Settings → Agent Tokens → New token**.
+3. Copy the `nat_…` token — it is shown only once.
+
+```bash
+# 4. Wire Claude Code hooks + MCP (will prompt for the token from step 3)
+npx collab-memory hooks-setup
 ```
 
 | Command | What it does |
 |---|---|
 | `setup` | Interactive prompt for every `.env` variable — Supabase URLs, API keys, app URL |
-| `hooks-setup` | Copies hook scripts to `.claude/hooks/`, writes `.claude/settings.json` and `.mcp.json`, prompts for agent token |
 | `migrate` | Applies all SQL migrations in `drizzle/` including RLS policies and storage bucket policies |
 | `dev` | Starts the Next.js dev server on `http://localhost:3000` |
+| `hooks-setup` | Copies hook scripts to `.claude/hooks/`, writes `.claude/settings.json` and `.mcp.json`, prompts for agent token |
 
-> **Agent token:** after `dev` is running, sign in, open an org, go to **Org Settings → Agent Tokens → New token**. Paste the token when `hooks-setup` asks for it, or re-run `npx collab-memory hooks-setup` at any time.
+> **One org = one isolated workspace.** Create a separate org (and token) per project to keep session memory scoped. Re-run `hooks-setup` at any time to rotate a token or reconfigure the app URL.
 
 ---
 
