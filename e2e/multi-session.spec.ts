@@ -108,7 +108,8 @@ test("concurrent edits — last write wins without corrupting versions", async (
   // User A saves a change first
   await pageA.locator("textarea[name=content]").fill("User A edit.");
   await pageA.getByRole("button", { name: "Save changes" }).click();
-  await expect(pageA.getByText("version 2")).toBeVisible({ timeout: 8_000 });
+  await pageA.waitForURL(/\?message=/, { timeout: 10_000 });
+  await expect(pageA.getByText("version 2")).toBeVisible();
 
   // User B attempts a save — may succeed as v3 or be a no-op
   const editArea = pageB.locator("textarea[name=content]");
@@ -122,7 +123,7 @@ test("concurrent edits — last write wins without corrupting versions", async (
 
   // User A refreshes and confirms no version regression
   await pageA.reload();
-  const versionText = await pageA.getByText(/version \d+/).textContent();
+  const versionText = await pageA.getByText(/version \d+/).first().textContent();
   const version = parseInt(versionText?.match(/\d+/)?.[0] ?? "0");
   expect(version).toBeGreaterThanOrEqual(2);
 });

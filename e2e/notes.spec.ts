@@ -83,7 +83,9 @@ test("edit note content bumps version", async ({ page }) => {
   await page.locator("textarea[name=content]").fill("Updated body — changed.");
   await page.getByRole("button", { name: "Save changes" }).click();
 
-  await expect(page.getByText("version 2")).toBeVisible({ timeout: 8_000 });
+  // Action redirects to same page with ?message= — wait for that before asserting version
+  await page.waitForURL(/\?message=/, { timeout: 10_000 });
+  await expect(page.getByText("version 2")).toBeVisible();
 });
 
 test("saving without changes keeps version the same (no-op guard)", async ({ page }) => {
