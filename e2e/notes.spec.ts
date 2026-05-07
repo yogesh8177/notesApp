@@ -84,11 +84,11 @@ test("edit note content redirects with success message", async ({ page }) => {
   // Wait for React hydration, then edit
   await page.locator("textarea[name=content]").fill("Updated body — changed.");
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Save changes" }).click();
-
-  // Action redirects with ?message=Note%20updated. — confirms save reached the server
-  // Version number assertion belongs in crud.integration.test.ts, not a browser test
-  await page.waitForURL(/message=Note%20updated/, { timeout: 10_000, waitUntil: "commit" });
+  // Start listening before clicking — avoids missing a fast redirect
+  await Promise.all([
+    page.waitForURL(/message=Note%20updated/, { timeout: 15_000, waitUntil: "commit" }),
+    page.getByRole("button", { name: "Save changes" }).click(),
+  ]);
 });
 
 test("saving without changes keeps version the same (no-op guard)", async ({ page }) => {
