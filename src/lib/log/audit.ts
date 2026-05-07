@@ -1,6 +1,7 @@
 import { db } from "@/lib/db/client";
 import { auditLog } from "@/lib/db/schema";
 import { log } from "@/lib/log";
+import { enqueueSync } from "@/lib/graph/queue";
 
 /**
  * Audit log writer. Persists to `audit_log` AND emits a structured log line.
@@ -59,7 +60,7 @@ export async function audit(event: AuditEvent): Promise<void> {
   // 2. persist row — best effort. Never let an audit failure block the
   // user's request, but DO surface it in logs for ops.
   try {
-    await db.insert(auditLog).values({
+    const [row] = await db.insert(auditLog).values({
       action: event.action,
       orgId: event.orgId ?? null,
       userId: event.userId ?? null,
@@ -68,7 +69,13 @@ export async function audit(event: AuditEvent): Promise<void> {
       metadata: event.metadata ?? {},
       ip: event.ip ?? null,
       userAgent: event.userAgent ?? null,
-    });
+    }).returning({ id: auditLog.id });
+
+    if (row && event.orgId) {
+      enqueueSync("AuditEvent", String(row.id), event.orgId).catch((err) =>
+        log.error({ err, auditId: row.id }, "graph.enqueue.fail")
+      );
+    }
   } catch (err) {
     log.error({ err, action: event.action }, "audit.persist.fail");
   }

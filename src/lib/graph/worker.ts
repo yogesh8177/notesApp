@@ -1,4 +1,4 @@
-import { sql, lt, and } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { graphSyncQueue } from "@/lib/db/schema";
 import { log } from "@/lib/log";
@@ -70,13 +70,6 @@ async function processBatch(): Promise<number> {
   return claimed.length;
 }
 
-// Purge rows that have exhausted all retries — prevents unbounded table growth.
-async function purgeExhausted(): Promise<void> {
-  await db
-    .delete(graphSyncQueue)
-    .where(and(sql`attempts >= max_attempts`, lt(graphSyncQueue.scheduledAt, sql`now()`)));
-}
-
 export async function runWorker(signal: AbortSignal): Promise<void> {
   log.info("graph.worker.start");
 
@@ -116,12 +109,9 @@ export async function runWorker(signal: AbortSignal): Promise<void> {
       }, { once: true });
     });
 
-  let iteration = 0;
   while (!signal.aborted) {
     try {
       const processed = await processBatch();
-      // Purge exhausted rows every 100 iterations (~5 min at 3s poll)
-      if (++iteration % 100 === 0) await purgeExhausted();
       // If we processed a full batch there may be more — skip the sleep.
       if (processed < BATCH_SIZE) await sleep(POLL_INTERVAL_MS);
     } catch (err) {

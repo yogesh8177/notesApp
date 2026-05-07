@@ -81,7 +81,9 @@ export async function addTurn(opts: {
   if (!row) return { turnIndex: -1 }; // idempotent skip — duplicate hook fire
 
   void maybeCompactConversation(opts.orgId, opts.sessionNoteId, row.turnIndex);
-  void enqueueSync("ConversationTurn", row.id, opts.orgId);
+  enqueueSync("ConversationTurn", row.id, opts.orgId).catch((err) =>
+    log.error({ err, turnId: row.id }, "graph.enqueue.fail")
+  );
 
   return { turnIndex: row.turnIndex };
 }
