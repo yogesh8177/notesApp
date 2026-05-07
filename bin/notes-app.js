@@ -102,41 +102,55 @@ const HOOKS_PKG     = path.join(PKG_ROOT, ".claude", "hooks");
 const SETTINGS_PATH = path.join(CLAUDE_DIR, "settings.json");
 const MCP_PATH      = path.join(ROOT, ".mcp.json");
 
-const HOOK_FILES = [
+// Source filenames inside the package (always CommonJS .js)
+const HOOK_SOURCES = [
   "_lib.js", "bootstrap.js", "recall.js", "checkpoint.js",
   "event.js", "log.js", "prompt.js", "stop.js",
 ];
 
-const SETTINGS_TEMPLATE = {
-  hooks: {
-    SessionStart: [
-      { hooks: [{ type: "command", command: "node .claude/hooks/bootstrap.js" }] },
-    ],
-    UserPromptSubmit: [
-      { hooks: [{ type: "command", command: "node .claude/hooks/recall.js" }] },
-      { hooks: [{ type: "command", command: "node .claude/hooks/prompt.js" }] },
-    ],
-    PostToolUse: [
-      {
-        matcher: "Bash",
-        if: "Bash(git commit *)",
-        hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }],
-      },
-      {
-        matcher: "mcp__notes-app__.*",
-        hooks: [{ type: "command", command: "node .claude/hooks/event.js" }],
-      },
-    ],
-    SubagentStart: [{ hooks: [{ type: "command", command: "node .claude/hooks/event.js" }] }],
-    SubagentStop:  [{ hooks: [{ type: "command", command: "node .claude/hooks/event.js" }] }],
-    Stop:          [{ hooks: [{ type: "command", command: "node .claude/hooks/stop.js" }] }],
-    PreCompact:    [{ hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }] }],
-    SessionEnd: [
-      { hooks: [{ type: "command", command: "node .claude/hooks/checkpoint.js" }] },
-      { hooks: [{ type: "command", command: "node .claude/hooks/stop.js" }] },
-    ],
-  },
-};
+// Projects with "type":"module" treat .js as ESM; hooks must be copied as .cjs.
+function detectHookExt() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+    return pkg.type === "module" ? ".cjs" : ".js";
+  } catch {
+    return ".js";
+  }
+}
+
+function buildSettingsTemplate(ext) {
+  const h = (name) => `node .claude/hooks/${name}${ext}`;
+  return {
+    hooks: {
+      SessionStart: [
+        { hooks: [{ type: "command", command: h("bootstrap") }] },
+      ],
+      UserPromptSubmit: [
+        { hooks: [{ type: "command", command: h("recall") }] },
+        { hooks: [{ type: "command", command: h("prompt") }] },
+      ],
+      PostToolUse: [
+        {
+          matcher: "Bash",
+          if: "Bash(git commit *)",
+          hooks: [{ type: "command", command: h("checkpoint") }],
+        },
+        {
+          matcher: "mcp__notes-app__.*",
+          hooks: [{ type: "command", command: h("event") }],
+        },
+      ],
+      SubagentStart: [{ hooks: [{ type: "command", command: h("event") }] }],
+      SubagentStop:  [{ hooks: [{ type: "command", command: h("event") }] }],
+      Stop:          [{ hooks: [{ type: "command", command: h("stop") }] }],
+      PreCompact:    [{ hooks: [{ type: "command", command: h("checkpoint") }] }],
+      SessionEnd: [
+        { hooks: [{ type: "command", command: h("checkpoint") }] },
+        { hooks: [{ type: "command", command: h("stop") }] },
+      ],
+    },
+  };
+}
 
 function mcpTemplate(appUrl) {
   return {
@@ -175,6 +189,11 @@ async function hooksSetup() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
 
+  const ext = detectHookExt();
+  const settingsTemplate = buildSettingsTemplate(ext);
+  // Destination filenames match the detected extension
+  const hookDests = HOOK_SOURCES.map((f) => f.replace(/\.js$/, ext));
+
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║       Claude Code hooks + MCP setup — collab-memory         ║
@@ -188,31 +207,32 @@ Steps:
   2. Write .claude/settings.json  (hook event registrations)
   3. Write .mcp.json              (notes-app MCP server entry)
   4. Configure agent token in .env
-`);
+${ext === ".cjs" ? '\n  ℹ  ESM project detected ("type":"module") — hooks will be copied as .cjs files.\n' : ""}`);
 
   // ── Step 1: copy hook scripts ─────────────────────────────────────────────
   console.log("── Step 1/4  Hook scripts ──────────────────────────────────────");
 
   const existingHooks = fs.existsSync(HOOKS_DST)
-    ? fs.readdirSync(HOOKS_DST).filter((f) => HOOK_FILES.includes(f))
+    ? fs.readdirSync(HOOKS_DST).filter((f) => hookDests.includes(f))
     : [];
+
+  const copyHooks = () => {
+    fs.mkdirSync(HOOKS_DST, { recursive: true });
+    for (let i = 0; i < HOOK_SOURCES.length; i++) {
+      fs.copyFileSync(path.join(HOOKS_PKG, HOOK_SOURCES[i]), path.join(HOOKS_DST, hookDests[i]));
+    }
+  };
 
   if (existingHooks.length > 0) {
     const ans = await ask(`  .claude/hooks/ already has hook files. Overwrite? [y/N] `);
     if (ans.trim().toLowerCase() !== "y") {
       console.log("  Skipped.\n");
     } else {
-      fs.mkdirSync(HOOKS_DST, { recursive: true });
-      for (const f of HOOK_FILES) {
-        fs.copyFileSync(path.join(HOOKS_PKG, f), path.join(HOOKS_DST, f));
-      }
+      copyHooks();
       console.log("  ✓ Hook scripts copied.\n");
     }
   } else {
-    fs.mkdirSync(HOOKS_DST, { recursive: true });
-    for (const f of HOOK_FILES) {
-      fs.copyFileSync(path.join(HOOKS_PKG, f), path.join(HOOKS_DST, f));
-    }
+    copyHooks();
     console.log("  ✓ Hook scripts copied.\n");
   }
 
@@ -223,12 +243,12 @@ Steps:
     if (ans.trim().toLowerCase() !== "y") {
       console.log("  Skipped.\n");
     } else {
-      fs.writeFileSync(SETTINGS_PATH, JSON.stringify(SETTINGS_TEMPLATE, null, 2) + "\n");
+      fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settingsTemplate, null, 2) + "\n");
       console.log("  ✓ Written.\n");
     }
   } else {
     fs.mkdirSync(CLAUDE_DIR, { recursive: true });
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(SETTINGS_TEMPLATE, null, 2) + "\n");
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settingsTemplate, null, 2) + "\n");
     console.log("  ✓ Written.\n");
   }
 
