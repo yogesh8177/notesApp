@@ -94,6 +94,49 @@ export async function deleteTestOrg(orgId: string) {
   await sql.unsafe(`DELETE FROM orgs WHERE id = '${orgId}'`);
 }
 
+export interface TestNote {
+  id: string;
+}
+
+/** Insert a note with its v1 version row directly, bypassing the server action. */
+export async function createTestNote(
+  orgId: string,
+  userId: string,
+  title: string,
+  content: string,
+  visibility = "org",
+): Promise<TestNote> {
+  const sql = getSql();
+  const [note] = await sql.unsafe(
+    `INSERT INTO notes (org_id, author_id, title, content, visibility, current_version)
+     VALUES ('${orgId}', '${userId}', '${title.replace(/'/g, "''")}', '${content.replace(/'/g, "''")}', '${visibility}', 1)
+     RETURNING id`,
+  ) as Array<{ id: string }>;
+  await sql.unsafe(
+    `INSERT INTO note_versions (note_id, version, title, content, visibility, changed_by)
+     VALUES ('${note.id}', 1, '${title.replace(/'/g, "''")}', '${content.replace(/'/g, "''")}', '${visibility}', '${userId}')`,
+  );
+  return { id: note.id };
+}
+
+/** Insert an additional version row and bump current_version on the note. */
+export async function addTestNoteVersion(
+  noteId: string,
+  userId: string,
+  version: number,
+  content: string,
+): Promise<void> {
+  const sql = getSql();
+  await sql.unsafe(
+    `INSERT INTO note_versions (note_id, version, title, content, visibility, changed_by)
+     SELECT '${noteId}', ${version}, title, '${content.replace(/'/g, "''")}', visibility, '${userId}'
+     FROM notes WHERE id = '${noteId}'`,
+  );
+  await sql.unsafe(
+    `UPDATE notes SET content = '${content.replace(/'/g, "''")}', current_version = ${version} WHERE id = '${noteId}'`,
+  );
+}
+
 /** Delete a Supabase auth user and the public.users row. */
 export async function deleteTestUser(userId: string) {
   const sql = getSql();

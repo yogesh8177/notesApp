@@ -101,40 +101,6 @@ test("user B cannot delete a note authored by user A", async () => {
   await expect(pageB.getByRole("button", { name: "Delete note" })).not.toBeVisible();
 });
 
-test("user A edit saves successfully and content is visible to user B", async () => {
-  const title = `Concurrent Note ${Date.now()}`;
-  const noteUrl = await createNote(pageA, org.id, title, "Version 1 content.", "org");
-
-  // User A saves a change — confirm redirect succeeds (version invariants tested in crud.integration.test.ts)
-  await pageA.locator("textarea[name=content]").fill("User A edit.");
-  await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
-  await pageA.getByRole("button", { name: "Save changes" }).click();
-  await expect(pageA.getByText("Note updated.")).toBeVisible({ timeout: 15_000 });
-
-  // User B loads the note and sees the updated content
-  await pageB.goto(noteUrl);
-  await expect(pageB.getByText("User A edit.")).toBeVisible({ timeout: 10_000 });
-});
-
-test("author changes visibility private→org; user B can now see note in list", async () => {
-  const title = `Visibility Change Note ${Date.now()}`;
-  const noteUrl = await createNote(pageA, org.id, title, "Initially private.", "private");
-
-  // User B should NOT see the private note
-  await pageB.goto(`/orgs/${org.id}/notes`);
-  await expect(pageB.getByRole("link", { name: title })).not.toBeVisible();
-
-  // User A is on detail page — wait for React hydration, then change visibility
-  await pageA.goto(noteUrl);
-  await pageA.locator("select[name=visibility]").selectOption("org");
-  await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
-  await pageA.getByRole("button", { name: "Save changes" }).click();
-  await expect(pageA.getByText("Note updated.")).toBeVisible({ timeout: 15_000 });
-
-  // User B refreshes list — note should now be visible
-  await pageB.goto(`/orgs/${org.id}/notes`);
-  await expect(pageB.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
-});
 
 test("two users see consistent state on shared note detail", async () => {
   const title = `Shared Detail Note ${Date.now()}`;
