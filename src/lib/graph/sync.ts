@@ -1,4 +1,4 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc, asc } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   notes,
@@ -91,6 +91,7 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
     db.select()
       .from(auditLog)
       .where(and(eq(auditLog.resourceId, noteId), eq(auditLog.orgId, orgId)))
+      .orderBy(desc(auditLog.createdAt))
       .limit(20),
   ]);
 
@@ -248,6 +249,7 @@ async function syncAgentSession(session: Neo4jSession, sessionId: string, orgId:
     db.select()
       .from(conversationTurns)
       .where(and(eq(conversationTurns.sessionNoteId, s.noteId), eq(conversationTurns.orgId, orgId)))
+      .orderBy(asc(conversationTurns.turnIndex))
       .limit(20),
   ]);
 
