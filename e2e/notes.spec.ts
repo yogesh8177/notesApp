@@ -79,8 +79,10 @@ test("edit note content bumps version", async ({ page }) => {
   const title = `Edit Note ${Date.now()}`;
   await createNote(page, org.id, title, "Original body.");
 
-  // Already on detail page — edit directly
+  // Already on detail page — wait for React hydration, then edit
   await page.locator("textarea[name=content]").fill("Updated body — changed.");
+  // Confirm React processed the fill event before clicking (isDirty → button enabled)
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await page.getByRole("button", { name: "Save changes" }).click();
 
   // Action redirects to same page with ?message= — wait for page to fully render before asserting

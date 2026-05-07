@@ -105,8 +105,9 @@ test("concurrent edits — last write wins without corrupting versions", async (
   // Both users open the note detail
   await pageB.goto(noteUrl);
 
-  // User A saves a change first
+  // User A saves a change first — wait for React hydration before clicking
   await pageA.locator("textarea[name=content]").fill("User A edit.");
+  await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await pageA.getByRole("button", { name: "Save changes" }).click();
   await pageA.waitForURL(/\?message=/, { timeout: 10_000 });
   await pageA.waitForLoadState("load");
@@ -137,9 +138,10 @@ test("author changes visibility private→org; user B can now see note in list",
   await pageB.goto(`/orgs/${org.id}/notes`);
   await expect(pageB.getByRole("link", { name: title })).not.toBeVisible();
 
-  // User A is already on detail page — change visibility to org
+  // User A is on detail page — wait for React hydration, then change visibility
   await pageA.goto(noteUrl);
   await pageA.locator("select[name=visibility]").selectOption("org");
+  await expect(pageA.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await pageA.getByRole("button", { name: "Save changes" }).click();
   await pageA.waitForURL(/\?message=/, { timeout: 10_000 });
 

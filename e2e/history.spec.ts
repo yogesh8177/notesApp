@@ -46,10 +46,12 @@ test("history page shows diff between v1 and v2 after an edit", async ({ page })
   await page.getByRole("button", { name: "Create note" }).click();
   await page.waitForURL(`**/orgs/${org.id}/notes/**`, { timeout: 10_000 });
 
-  // Edit to produce v2
+  // Edit to produce v2 — wait for React hydration before clicking save
   await page.locator("textarea[name=content]").fill("Version two body.");
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.waitForURL(/\?message=/, { timeout: 10_000 });
+  await page.waitForLoadState("load");
 
   // Navigate to history
   await page.getByRole("link", { name: "View history" }).click();
