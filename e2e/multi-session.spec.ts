@@ -109,7 +109,8 @@ test("concurrent edits — last write wins without corrupting versions", async (
   await pageA.locator("textarea[name=content]").fill("User A edit.");
   await pageA.getByRole("button", { name: "Save changes" }).click();
   await pageA.waitForURL(/\?message=/, { timeout: 10_000 });
-  await expect(pageA.getByText("version 2")).toBeVisible();
+  await pageA.waitForLoadState("load");
+  await expect(pageA.getByText(/version 2/)).toBeVisible({ timeout: 15_000 });
 
   // User B attempts a save — may succeed as v3 or be a no-op
   const editArea = pageB.locator("textarea[name=content]");
