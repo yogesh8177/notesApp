@@ -325,6 +325,55 @@ npm run seed:large    # 10 000 notes across 10 orgs (search stress test)
 | `npm run graph:setup` | Create Neo4j constraints + indexes |
 | `npm run graph:sync` | Bulk sync Postgres → Neo4j |
 | `npm run graph:clear` | Delete all graph data |
+| `npm test` | Unit tests (Vitest, no DB) |
+| `npm run test:integration` | Integration tests (requires `DATABASE_URL`) |
+| `npm run test:e2e` | Playwright e2e tests (requires dev/prod server + Supabase) |
+| `npm run test:e2e:ui` | Playwright interactive UI mode |
+| `npm run test:e2e:headed` | Playwright with visible browser |
+
+### Running tests
+
+**Unit tests** — no external dependencies:
+```bash
+npm test
+```
+
+**Integration tests** — require a real Postgres database with migrations applied:
+```bash
+DATABASE_URL=postgresql://... npm run test:integration
+```
+
+**E2E tests (Playwright)** — require a running app and real Supabase credentials. The test runner auto-starts a dev server unless `PLAYWRIGHT_NO_SERVER=1` is set:
+```bash
+# Auto-starts dev server
+npm run test:e2e
+
+# If dev/prod server is already running on :3000
+PLAYWRIGHT_NO_SERVER=1 npm run test:e2e
+```
+
+E2e tests provision and tear down their own isolated users and orgs via the Supabase Admin API. They cover auth flows, notes CRUD, cross-org access denial, and multi-browser session scenarios.
+
+### Enabling e2e tests in CI
+
+The e2e CI job is gated by a repository variable so it doesn't run for forks or external PRs.
+
+**1. Add secrets** (GitHub → Settings → Secrets and variables → Actions → Secrets):
+
+| Secret | Value |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+| `DATABASE_URL` | Postgres connection string (pooler) |
+
+**2. Enable the job** (GitHub → Settings → Secrets and variables → Actions → Variables):
+
+| Variable | Value |
+|---|---|
+| `E2E_ENABLED` | `true` |
+
+Once both are set, every push to `main` and every PR will run the full e2e suite.
 
 ---
 
