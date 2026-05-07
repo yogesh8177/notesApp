@@ -10,7 +10,7 @@ export async function signIn(page: Page, user: TestUser) {
   // Switch to the Password tab
   await page.getByRole("tab", { name: "Password" }).click();
   await page.getByLabel("Email").last().fill(user.email);
-  await page.getByLabel("Password").fill(user.password);
+  await page.getByRole("textbox", { name: "Password" }).fill(user.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   // Successful sign-in redirects to /orgs
   await page.waitForURL("**/orgs**", { timeout: 15_000 });
