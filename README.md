@@ -12,8 +12,13 @@ The app is designed around one idea: **an AI agent should have the same persiste
 
 ## Quick start
 
+There are two parts: **server setup** (deploy the memory layer once) and **per-project wiring** (run `hooks-setup` in every Claude Code project that should use it).
+
+### Server setup
+
 ```bash
 # 1. Configure .env (Supabase URLs, API keys, app URL)
+#    Works from any directory — uses the package's bundled .env.example as a template.
 npx collab-memory setup
 
 # 2. Apply database migrations
@@ -23,24 +28,26 @@ npx collab-memory migrate
 npx collab-memory dev
 ```
 
-Then in your browser:
-1. Sign in and create an org.
-2. Go to **Org Settings → Agent Tokens → New token**.
-3. Copy the `nat_…` token — it is shown only once.
+### Per-project wiring
+
+Run the following **in each project directory** where you want Claude Code to use the memory layer.
 
 ```bash
-# 4. Wire Claude Code hooks + MCP (will prompt for the token from step 3)
+# 4. Sign in at http://localhost:3000, create an org, and generate a token:
+#    Org Settings → Agent Tokens → New token  (nat_… shown only once)
+
+# 5. Wire Claude Code hooks + MCP into this project (prompts for the token above)
 npx collab-memory hooks-setup
 ```
 
+> **One org = one isolated workspace.** Create a separate org (and token) per project to keep session memory scoped. Re-run `hooks-setup` at any time to rotate a token or reconfigure the app URL.
+
 | Command | What it does |
 |---|---|
-| `setup` | Interactive prompt for every `.env` variable — Supabase URLs, API keys, app URL |
+| `setup` | Interactive wizard for every `.env` variable — Supabase URLs, API keys, app URL |
 | `migrate` | Applies all SQL migrations in `drizzle/` including RLS policies and storage bucket policies |
 | `dev` | Starts the Next.js dev server on `http://localhost:3000` |
 | `hooks-setup` | Copies hook scripts to `.claude/hooks/`, writes `.claude/settings.json` and `.mcp.json`, prompts for agent token |
-
-> **One org = one isolated workspace.** Create a separate org (and token) per project to keep session memory scoped. Re-run `hooks-setup` at any time to rotate a token or reconfigure the app URL.
 
 ---
 

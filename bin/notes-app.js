@@ -11,8 +11,12 @@ const readline = require("readline");
 const ROOT     = process.cwd();
 const PKG_ROOT = path.resolve(__dirname, "..");
 
-const ENV_FILE    = path.join(ROOT, ".env");
-const ENV_EXAMPLE = path.join(ROOT, ".env.example");
+const ENV_FILE        = path.join(ROOT, ".env");
+// Prefer a .env.example in CWD; fall back to the one shipped with the package
+// so `npx collab-memory setup` works from any directory.
+const ENV_EXAMPLE     = fs.existsSync(path.join(ROOT, ".env.example"))
+  ? path.join(ROOT, ".env.example")
+  : path.join(PKG_ROOT, ".env.example");
 
 const [, , command] = process.argv;
 
@@ -54,11 +58,6 @@ function runWithArgs(script, extraArgs) {
 }
 
 async function setup() {
-  if (!fs.existsSync(ENV_EXAMPLE)) {
-    console.error("No .env.example found at", ENV_EXAMPLE);
-    process.exit(1);
-  }
-
   const example = fs.readFileSync(ENV_EXAMPLE, "utf8");
   const lines = example.split("\n");
 
@@ -90,7 +89,7 @@ async function setup() {
 
   rl.close();
   fs.writeFileSync(ENV_FILE, out.join("\n") + "\n");
-  console.log("\n.env written.\n\nNext steps:\n  npx collab-memory hooks-setup   Wire Claude Code hooks + MCP\n  npx collab-memory migrate        Apply DB migrations\n");
+  console.log("\n.env written.\n\nNext steps:\n  npx collab-memory migrate        Apply DB migrations\n  npx collab-memory dev            Start the dev server\n  npx collab-memory hooks-setup    Wire Claude Code hooks + MCP (run in each project)\n");
 }
 
 // ---------------------------------------------------------------------------
