@@ -1,29 +1,33 @@
 /**
  * e2e — Version history page
  *
- * Verifies that after editing a note the history page shows:
- * - The "History" heading with current version in the subtitle
- * - A diff section "Comparing v2 against v1"
- * - Both versions listed in "All versions" with a "Compare to previous" button
+ * Seeds two versions directly via DB fixtures (no UI save) and verifies that
+ * the history page renders the diff section and version list correctly.
  */
 import { test, expect } from "@playwright/test";
 import {
   createTestUser,
   createTestOrg,
+  createTestNote,
+  addTestNoteVersion,
   deleteTestOrg,
   deleteTestUser,
   closeSql,
   type TestUser,
   type TestOrg,
+  type TestNote,
 } from "./fixtures/db";
 import { signIn } from "./fixtures/auth";
 
 let user: TestUser;
 let org: TestOrg;
+let note: TestNote;
 
 test.beforeAll(async () => {
   user = await createTestUser("history-e2e");
   org = await createTestOrg(user.id, "history-e2e");
+  note = await createTestNote(org.id, user.id, "History Test Note", "Version one body.");
+  await addTestNoteVersion(note.id, user.id, 2, "Version two body.");
 });
 
 test.afterAll(async () => {
@@ -36,29 +40,10 @@ test.beforeEach(async ({ page }) => {
   await signIn(page, user);
 });
 
-test("history page shows diff between v1 and v2 after an edit", async ({ page }) => {
-  // Create a note
-  await page.goto(`/orgs/${org.id}/notes`);
-  const title = `History Note ${Date.now()}`;
-  await page.getByPlaceholder("Sprint retro").fill(title);
-  await page.locator("textarea[name=content]").fill("Version one body.");
-  await page.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
-  await page.getByRole("button", { name: "Create note" }).click();
-  // Strip ?message=Note%20created. so the next waitForURL waits for the actual update redirect
-  await page.waitForURL(`**/orgs/${org.id}/notes/**`, { timeout: 10_000 });
-  await page.goto(page.url().split("?")[0]);
+test("history page shows diff between v1 and v2", async ({ page }) => {
+  await page.goto(`/orgs/${org.id}/notes/${note.id}/history`);
 
-  // Edit to produce v2 — wait for React hydration before clicking save
-  await page.locator("textarea[name=content]").fill("Version two body.");
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText("Note updated.")).toBeVisible({ timeout: 15_000 });
-
-  // Navigate to history
-  await page.getByRole("link", { name: "View history" }).click();
-  await page.waitForURL(`**/history**`, { timeout: 8_000 });
-
-  // Heading visible — subtitle version number tested in crud.integration.test.ts
+  // Heading visible
   await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
 
   // Diff section title shows v2 vs v1

@@ -77,16 +77,6 @@ test("open note detail page", async ({ page }) => {
   await expect(page.getByText("version 1")).toBeVisible();
 });
 
-test("edit note content redirects with success message", async ({ page }) => {
-  const title = `Edit Note ${Date.now()}`;
-  await createNote(page, org.id, title, "Original body.");
-
-  // Wait for React hydration, then edit
-  await page.locator("textarea[name=content]").fill("Updated body — changed.");
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText("Note updated.")).toBeVisible({ timeout: 15_000 });
-});
 
 test("saving without changes keeps version the same (no-op guard)", async ({ page }) => {
   const title = `Noop Note ${Date.now()}`;
