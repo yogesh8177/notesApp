@@ -63,11 +63,11 @@ test("note created by user A is visible to user B after reload", async () => {
   await pageA.locator("textarea[name=content]").fill("Visible to all org members.");
   await pageA.locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByText(title)).toBeVisible({ timeout: 10_000 });
+  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
   // User B reloads the notes list
   await pageB.goto(`/orgs/${org.id}/notes`);
-  await expect(pageB.getByText(title)).toBeVisible({ timeout: 10_000 });
+  await expect(pageB.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 });
 
 test("private note created by user A is not visible to user B", async () => {
@@ -77,11 +77,11 @@ test("private note created by user A is not visible to user B", async () => {
   await pageA.locator("textarea[name=content]").fill("Only author sees this.");
   await pageA.locator("select[name=visibility]").selectOption("private");
   await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByText(title)).toBeVisible({ timeout: 10_000 });
+  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
   // User B should NOT see the private note
   await pageB.goto(`/orgs/${org.id}/notes`);
-  await expect(pageB.getByText(title)).not.toBeVisible();
+  await expect(pageB.getByRole("link", { name: title })).not.toBeVisible();
 });
 
 test("user B cannot delete a note authored by user A", async () => {
@@ -92,12 +92,12 @@ test("user B cannot delete a note authored by user A", async () => {
   await pageA.locator("textarea[name=content]").fill("This belongs to A.");
   await pageA.locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByText(title)).toBeVisible({ timeout: 10_000 });
+  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
   // User B navigates to the note
   await pageB.goto(`/orgs/${org.id}/notes`);
-  await expect(pageB.getByText(title)).toBeVisible({ timeout: 10_000 });
-  await pageB.getByText(title).click();
+  await expect(pageB.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
+  await pageB.getByRole("link", { name: title }).click();
 
   // The Delete button should be absent for non-author user B
   await expect(pageB.getByRole("button", { name: "Delete note" })).not.toBeVisible();
@@ -111,10 +111,10 @@ test("concurrent edits — last write wins without corrupting versions", async (
   await pageA.locator("textarea[name=content]").fill("Version 1 content.");
   await pageA.locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByText(title)).toBeVisible({ timeout: 10_000 });
+  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
   // Get note URL from user A's context
-  await pageA.getByText(title).click();
+  await pageA.getByRole("link", { name: title }).click();
   const noteUrl = pageA.url();
 
   // Both users open the note detail
@@ -151,8 +151,8 @@ test("two users see consistent state on shared note detail", async () => {
   await pageA.locator("textarea[name=content]").fill("Shared initial content.");
   await pageA.locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByText(title)).toBeVisible({ timeout: 10_000 });
-  await pageA.getByText(title).click();
+  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
+  await pageA.getByRole("link", { name: title }).click();
 
   const noteUrl = pageA.url();
 
