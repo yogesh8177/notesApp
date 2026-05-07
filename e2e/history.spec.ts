@@ -49,9 +49,9 @@ test("history page shows diff between v1 and v2", async ({ page }) => {
   // Diff section title shows v2 vs v1
   await expect(page.getByText("Comparing v2 against v1")).toBeVisible();
 
-  // Both versions appear in the "All versions" list
-  await expect(page.getByText(/v2 ·/)).toBeVisible();
-  await expect(page.getByText(/v1 ·/)).toBeVisible();
+  // Both versions appear somewhere on the page (diff header + All versions list)
+  await expect(page.getByText(/v2 ·/).first()).toBeVisible();
+  await expect(page.getByText(/v1 ·/).first()).toBeVisible();
 
   // "Compare to previous" button exists for v2
   await expect(page.getByRole("link", { name: "Compare to previous" }).first()).toBeVisible();
