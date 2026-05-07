@@ -5,8 +5,11 @@
  * inside the same org. Tests verify:
  *   1. Notes created by one user are visible to other org members.
  *   2. A private note is NOT visible to other members in the list.
- *   3. Sharing a note with a specific user makes it visible to them.
- *   4. Only the author can delete their own note; another member cannot.
+ *   3. Only the author can delete their own note; another member cannot.
+ *   4. Concurrent edits don't corrupt version numbers.
+ *
+ * Note: createNoteAction redirects to the note detail page after creation.
+ * Each test waits for that redirect then navigates as needed.
  */
 import { test, expect, Browser, BrowserContext, Page } from "@playwright/test";
 import {
@@ -36,7 +39,6 @@ test.beforeAll(async ({ browser }: { browser: Browser }) => {
   org = await createTestOrg(userA.id, "multi-sess");
   await addMember(org.id, userB.id, "member");
 
-  // Open two independent browser contexts (separate cookie jars)
   ctxA = await browser.newContext();
   ctxB = await browser.newContext();
   pageA = await ctxA.newPage();
@@ -55,78 +57,60 @@ test.afterAll(async () => {
   await closeSql();
 });
 
-test("note created by user A is visible to user B after reload", async () => {
-  // User A creates a public (org-visible) note
-  await pageA.goto(`/orgs/${org.id}/notes`);
-  const title = `Shared Org Note ${Date.now()}`;
-  await pageA.getByPlaceholder("Sprint retro").fill(title);
-  await pageA.locator("textarea[name=content]").fill("Visible to all org members.");
-  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
-  await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
+/** Submit create note form and wait for redirect to detail page. Returns detail URL. */
+async function createNote(page: Page, orgId: string, title: string, content: string, visibility = "org") {
+  await page.goto(`/orgs/${orgId}/notes`);
+  await page.getByPlaceholder("Sprint retro").fill(title);
+  await page.locator("textarea[name=content]").fill(content);
+  await page.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption(visibility);
+  await page.getByRole("button", { name: "Create note" }).click();
+  await page.waitForURL(`**/orgs/${orgId}/notes/**`, { timeout: 10_000 });
+  return page.url();
+}
 
-  // User B reloads the notes list
+test("note created by user A is visible to user B after reload", async () => {
+  const title = `Shared Org Note ${Date.now()}`;
+  await createNote(pageA, org.id, title, "Visible to all org members.", "org");
+
+  // User B loads the notes list — the org-visible note should appear
   await pageB.goto(`/orgs/${org.id}/notes`);
   await expect(pageB.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 });
 
 test("private note created by user A is not visible to user B", async () => {
-  await pageA.goto(`/orgs/${org.id}/notes`);
   const title = `Private Note ${Date.now()}`;
-  await pageA.getByPlaceholder("Sprint retro").fill(title);
-  await pageA.locator("textarea[name=content]").fill("Only author sees this.");
-  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("private");
-  await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
+  await createNote(pageA, org.id, title, "Only author sees this.", "private");
 
-  // User B should NOT see the private note
+  // User B should NOT see the private note in the list
   await pageB.goto(`/orgs/${org.id}/notes`);
   await expect(pageB.getByRole("link", { name: title })).not.toBeVisible();
 });
 
 test("user B cannot delete a note authored by user A", async () => {
-  // User A creates a note
-  await pageA.goto(`/orgs/${org.id}/notes`);
   const title = `Ownership Note ${Date.now()}`;
-  await pageA.getByPlaceholder("Sprint retro").fill(title);
-  await pageA.locator("textarea[name=content]").fill("This belongs to A.");
-  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
-  await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
+  const noteUrl = await createNote(pageA, org.id, title, "This belongs to A.", "org");
 
-  // User B navigates to the note
-  await pageB.goto(`/orgs/${org.id}/notes`);
-  await expect(pageB.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
-  await pageB.getByRole("link", { name: title }).click();
+  // User B navigates directly to the note detail page
+  await pageB.goto(noteUrl);
+  await expect(pageB.getByRole("heading", { name: title })).toBeVisible();
 
-  // The Delete button should be absent for non-author user B
+  // Delete button should be absent for non-author
   await expect(pageB.getByRole("button", { name: "Delete note" })).not.toBeVisible();
 });
 
 test("concurrent edits — last write wins without corrupting versions", async () => {
-  // User A creates a note and navigates to it
-  await pageA.goto(`/orgs/${org.id}/notes`);
   const title = `Concurrent Note ${Date.now()}`;
-  await pageA.getByPlaceholder("Sprint retro").fill(title);
-  await pageA.locator("textarea[name=content]").fill("Version 1 content.");
-  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
-  await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
-
-  // Get note URL from user A's context
-  await pageA.getByRole("link", { name: title }).click();
-  const noteUrl = pageA.url();
+  const noteUrl = await createNote(pageA, org.id, title, "Version 1 content.", "org");
 
   // Both users open the note detail
   await pageB.goto(noteUrl);
 
   // User A saves a change first
   await pageA.locator("textarea[name=content]").fill("User A edit.");
-  await pageA.getByRole("button", { name: "Save" }).click();
+  await pageA.getByRole("button", { name: "Save changes" }).click();
   await expect(pageA.getByText("version 2")).toBeVisible({ timeout: 8_000 });
 
-  // User B (without refreshing) attempts a save — the save may succeed as v3
-  // or fail with a conflict. Either way, version must be ≥ 2 (no regression to v1).
+  // User B attempts a save — may succeed as v3 or be a no-op
   const editArea = pageB.locator("textarea[name=content]");
   if (await editArea.isVisible()) {
     await editArea.fill("User B edit.");
@@ -144,19 +128,10 @@ test("concurrent edits — last write wins without corrupting versions", async (
 });
 
 test("two users see consistent state on shared note detail", async () => {
-  // A creates an org-visible note
-  await pageA.goto(`/orgs/${org.id}/notes`);
   const title = `Shared Detail Note ${Date.now()}`;
-  await pageA.getByPlaceholder("Sprint retro").fill(title);
-  await pageA.locator("textarea[name=content]").fill("Shared initial content.");
-  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
-  await pageA.getByRole("button", { name: "Create note" }).click();
-  await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
-  await pageA.getByRole("link", { name: title }).click();
+  const noteUrl = await createNote(pageA, org.id, title, "Shared initial content.", "org");
 
-  const noteUrl = pageA.url();
-
-  // B navigates directly to the same note
+  // B navigates directly to the same note URL
   await pageB.goto(noteUrl);
   await expect(pageB.getByRole("heading", { name: title })).toBeVisible();
   await expect(pageB.getByText("Shared initial content.")).toBeVisible();

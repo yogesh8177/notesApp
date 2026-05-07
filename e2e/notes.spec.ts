@@ -3,6 +3,9 @@
  *
  * Covers: create, view, edit (content change), no-op save guard, delete.
  * Runs as a single member user inside one org.
+ *
+ * Note: createNoteAction redirects to the note detail page after creation,
+ * so tests proceed from the detail page rather than waiting for a list link.
  */
 import { test, expect } from "@playwright/test";
 import {
@@ -34,6 +37,17 @@ test.beforeEach(async ({ page }) => {
   await signIn(page, user);
 });
 
+/** Fill and submit the create note form, wait for redirect to detail page. */
+async function createNote(page: import("@playwright/test").Page, orgId: string, title: string, content: string, visibility = "org") {
+  await page.goto(`/orgs/${orgId}/notes`);
+  await page.getByPlaceholder("Sprint retro").fill(title);
+  await page.locator("textarea[name=content]").fill(content);
+  await page.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption(visibility);
+  await page.getByRole("button", { name: "Create note" }).click();
+  // Action redirects to detail page
+  await page.waitForURL(`**/orgs/${orgId}/notes/**`, { timeout: 10_000 });
+}
+
 test("notes list page loads for org member", async ({ page }) => {
   await page.goto(`/orgs/${org.id}/notes`);
   await expect(page.getByRole("heading", { name: "Notes" })).toBeVisible();
@@ -41,38 +55,31 @@ test("notes list page loads for org member", async ({ page }) => {
 });
 
 test("create a note and see it in the list", async ({ page }) => {
-  await page.goto(`/orgs/${org.id}/notes`);
-
   const title = `E2E Note ${Date.now()}`;
-  await page.getByPlaceholder("Sprint retro").fill(title);
-  await page.locator("textarea[name=content]").fill("Hello from Playwright.");
-  await page.getByRole("button", { name: "Create note" }).click();
+  await createNote(page, org.id, title, "Hello from Playwright.");
 
+  // Redirected to detail — heading confirms creation
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
+  // Navigate back to list and confirm the note appears as a link
+  await page.goto(`/orgs/${org.id}/notes`);
   await expect(page.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 });
 
 test("open note detail page", async ({ page }) => {
-  await page.goto(`/orgs/${org.id}/notes`);
   const title = `Detail Note ${Date.now()}`;
-  await page.getByPlaceholder("Sprint retro").fill(title);
-  await page.locator("textarea[name=content]").fill("Detail content.");
-  await page.getByRole("button", { name: "Create note" }).click();
-  await expect(page.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
+  await createNote(page, org.id, title, "Detail content.");
 
-  await page.getByRole("link", { name: title }).click();
+  // Already on detail page after creation
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await expect(page.getByText("version 1")).toBeVisible();
 });
 
 test("edit note content bumps version", async ({ page }) => {
-  await page.goto(`/orgs/${org.id}/notes`);
   const title = `Edit Note ${Date.now()}`;
-  await page.getByPlaceholder("Sprint retro").fill(title);
-  await page.locator("textarea[name=content]").fill("Original body.");
-  await page.getByRole("button", { name: "Create note" }).click();
-  await expect(page.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("link", { name: title }).click();
+  await createNote(page, org.id, title, "Original body.");
 
+  // Already on detail page — edit directly
   await page.locator("textarea[name=content]").fill("Updated body — changed.");
   await page.getByRole("button", { name: "Save changes" }).click();
 
@@ -80,28 +87,21 @@ test("edit note content bumps version", async ({ page }) => {
 });
 
 test("saving without changes keeps version the same (no-op guard)", async ({ page }) => {
-  await page.goto(`/orgs/${org.id}/notes`);
   const title = `Noop Note ${Date.now()}`;
-  await page.getByPlaceholder("Sprint retro").fill(title);
-  await page.locator("textarea[name=content]").fill("Unchanged body.");
-  await page.getByRole("button", { name: "Create note" }).click();
-  await expect(page.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("link", { name: title }).click();
+  await createNote(page, org.id, title, "Unchanged body.");
 
+  // Already on detail page — Save changes should be disabled
   await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
 });
 
 test("delete note removes it from list", async ({ page }) => {
-  await page.goto(`/orgs/${org.id}/notes`);
   const title = `Delete Note ${Date.now()}`;
-  await page.getByPlaceholder("Sprint retro").fill(title);
-  await page.locator("textarea[name=content]").fill("To be deleted.");
-  await page.getByRole("button", { name: "Create note" }).click();
-  await expect(page.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("link", { name: title }).click();
+  await createNote(page, org.id, title, "To be deleted.");
 
+  // Already on detail page — delete
   await page.getByRole("button", { name: "Delete note" }).click();
 
+  // Should redirect back to list and note link is gone
   await page.waitForURL(`**/orgs/${org.id}/notes**`, { timeout: 10_000 });
   await expect(page.getByRole("link", { name: title })).not.toBeVisible();
 });
