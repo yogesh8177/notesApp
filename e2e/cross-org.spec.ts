@@ -45,8 +45,8 @@ test.beforeAll(async ({ browser }: { browser: Browser }) => {
   ) as Array<{ id: string }>;
   noteIdInOrgA = note.id;
   await sql.unsafe(
-    `INSERT INTO note_versions (note_id, version, content, changed_by)
-     VALUES ('${noteIdInOrgA}', 1, 'Private content', '${userA.id}')`,
+    `INSERT INTO note_versions (note_id, version, title, content, visibility, changed_by)
+     VALUES ('${noteIdInOrgA}', 1, 'Secret Note', 'Private content', 'private', '${userA.id}')`,
   );
 });
 

@@ -45,7 +45,7 @@ test("redirect_to param is honoured after sign-in", async ({ page }) => {
   // Sign in from the redirected URL — should land back on /orgs not /sign-in
   await page.getByRole("tab", { name: "Password" }).click();
   await page.getByLabel("Email").last().fill(user.email);
-  await page.getByLabel("Password").fill(user.password);
+  await page.getByRole("textbox", { name: "Password" }).fill(user.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/\/orgs/, { timeout: 15_000 });
   await expect(page).not.toHaveURL(/\/sign-in/);
