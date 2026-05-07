@@ -1,26 +1,27 @@
 /**
  * e2e — Cross-org boundary enforcement
  *
- * Verifies that a user cannot read or mutate notes/pages belonging to an org
- * they are not a member of. These tests exercise the Next.js middleware and
- * server-side permission checks — NOT just RLS (which is covered by integration
- * tests). The browser should be redirected or shown a 404/access-denied state.
+ * Verifies that a user cannot read notes belonging to an org they are not a
+ * member of. requireOrgRole() redirects non-members to /orgs; the test
+ * asserts that redirect happens and content is not accessible.
  *
  * Scenarios:
- *   1. User B (not in org A) requests org A's notes list → redirected away.
- *   2. User B directly navigates to a known note URL in org A → 404 / not found.
- *   3. User A (in org A) cannot reach org B's notes list.
+ *   1. User B (not in org A) requests org A's notes list → redirected to /orgs.
+ *   2. User B directly navigates to a known note URL in org A → redirected to /orgs.
+ *   3. User A (in org A only) cannot reach org B's notes list → redirected to /orgs.
+ *   4. Accessing another org's page does not break access to the user's own org.
  */
 import { test, expect, Browser } from "@playwright/test";
 import {
   createTestUser,
   createTestOrg,
+  createTestNote,
   deleteTestOrg,
   deleteTestUser,
   closeSql,
-  getSql,
   type TestUser,
   type TestOrg,
+  type TestNote,
 } from "./fixtures/db";
 import { signIn } from "./fixtures/auth";
 
@@ -28,32 +29,17 @@ let userA: TestUser;
 let userB: TestUser;
 let orgA: TestOrg;
 let orgB: TestOrg;
-let noteIdInOrgA: string;
+let noteInOrgA: TestNote;
 
 test.beforeAll(async ({ browser }: { browser: Browser }) => {
   userA = await createTestUser("cross-org-a");
   userB = await createTestUser("cross-org-b");
   orgA = await createTestOrg(userA.id, "cross-org-a");
   orgB = await createTestOrg(userB.id, "cross-org-b");
-
-  // Seed a note in org A via direct SQL (owned by userA)
-  const sql = getSql();
-  const [note] = await sql.unsafe(
-    `INSERT INTO notes (org_id, author_id, title, content, visibility, current_version)
-     VALUES ('${orgA.id}', '${userA.id}', 'Secret Note', 'Private content', 'private', 1)
-     RETURNING id`,
-  ) as Array<{ id: string }>;
-  noteIdInOrgA = note.id;
-  await sql.unsafe(
-    `INSERT INTO note_versions (note_id, version, title, content, visibility, changed_by)
-     VALUES ('${noteIdInOrgA}', 1, 'Secret Note', 'Private content', 'private', '${userA.id}')`,
-  );
+  noteInOrgA = await createTestNote(orgA.id, userA.id, "Secret Note", "Private content", "private");
 });
 
 test.afterAll(async () => {
-  const sql = getSql();
-  await sql.unsafe(`DELETE FROM note_versions WHERE note_id = '${noteIdInOrgA}'`);
-  await sql.unsafe(`DELETE FROM notes WHERE id = '${noteIdInOrgA}'`);
   await deleteTestOrg(orgA.id);
   await deleteTestOrg(orgB.id);
   await deleteTestUser(userA.id);
@@ -61,66 +47,33 @@ test.afterAll(async () => {
   await closeSql();
 });
 
-test("non-member cannot access org notes list", async ({ page }) => {
-  // Sign in as userB who is NOT in orgA
+test("non-member cannot access org notes list — redirected to /orgs", async ({ page }) => {
   await signIn(page, userB);
   await page.goto(`/orgs/${orgA.id}/notes`);
-
-  // Should be redirected away (to /orgs or /sign-in) or show an error — never the notes list
-  const url = page.url();
-  const isAllowed =
-    url.includes(`/orgs/${orgA.id}/notes`) &&
-    !url.includes("sign-in") &&
-    !url.includes("error");
-
-  // Also check that the "Notes" heading for orgA is NOT shown
-  const hasNotesHeading = await page.getByRole("heading", { name: "Notes" }).isVisible().catch(() => false);
-
-  // Either redirect happened OR notes heading is not displayed
-  expect(isAllowed && hasNotesHeading).toBe(false);
+  // requireOrgRole redirects non-members to /orgs
+  await expect(page).toHaveURL(/\/orgs$/, { timeout: 8_000 });
 });
 
-test("non-member direct note URL returns not-found state", async ({ page }) => {
+test("non-member direct note URL is redirected to /orgs", async ({ page }) => {
   await signIn(page, userB);
-  await page.goto(`/orgs/${orgA.id}/notes/${noteIdInOrgA}`);
-
-  // Expect either a redirect away from orgA or a not-found / access-denied message
-  const currentUrl = page.url();
-  const stillOnNote = currentUrl.includes(`/orgs/${orgA.id}/notes/${noteIdInOrgA}`);
-
-  if (stillOnNote) {
-    // Page rendered but should show an error state, not the note content
-    await expect(page.getByText("Private content")).not.toBeVisible();
-    // Should show an error or not-found indicator
-    const hasError =
-      (await page.getByText(/not found|unavailable|access/i).isVisible().catch(() => false)) ||
-      (await page.getByText(/404/i).isVisible().catch(() => false));
-    expect(hasError).toBe(true);
-  } else {
-    // Redirect happened — acceptable
-    expect(currentUrl).not.toContain(`/orgs/${orgA.id}/notes/${noteIdInOrgA}`);
-  }
+  await page.goto(`/orgs/${orgA.id}/notes/${noteInOrgA.id}`);
+  await expect(page).toHaveURL(/\/orgs$/, { timeout: 8_000 });
+  // Confirm the protected content was never rendered
+  await expect(page.getByText("Private content")).not.toBeVisible();
 });
 
-test("member of org A cannot see org B notes list", async ({ page }) => {
-  // Sign in as userA who is NOT in orgB
+test("member of org A cannot access org B notes list — redirected to /orgs", async ({ page }) => {
   await signIn(page, userA);
   await page.goto(`/orgs/${orgB.id}/notes`);
-
-  const url = page.url();
-  const isAllowed =
-    url.includes(`/orgs/${orgB.id}/notes`) &&
-    !url.includes("sign-in") &&
-    !url.includes("error");
-
-  const hasNotesHeading = await page.getByRole("heading", { name: "Notes" }).isVisible().catch(() => false);
-
-  expect(isAllowed && hasNotesHeading).toBe(false);
+  await expect(page).toHaveURL(/\/orgs$/, { timeout: 8_000 });
 });
 
-test("org A owner can still access org A notes after cross-org attempt", async ({ page }) => {
-  // userA IS a member of orgA — confirm they can access after the cross-org attempt above
+test("cross-org attempt does not break access to own org", async ({ page }) => {
   await signIn(page, userA);
+  // Attempt cross-org access first
+  await page.goto(`/orgs/${orgB.id}/notes`);
+  await expect(page).toHaveURL(/\/orgs$/, { timeout: 8_000 });
+  // userA IS a member of orgA — should still work
   await page.goto(`/orgs/${orgA.id}/notes`);
   await expect(page.getByRole("heading", { name: "Notes" })).toBeVisible();
 });
