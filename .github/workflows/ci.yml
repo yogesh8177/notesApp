@@ -102,9 +102,6 @@ jobs:
     runs-on: ubuntu-latest
     # Requires repository secrets: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
     # SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL.
-    # Gate via a repository variable so forks / external PRs skip this job gracefully.
-    # Set E2E_ENABLED = 'true' in Settings → Variables to enable.
-    if: vars.E2E_ENABLED == 'true'
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

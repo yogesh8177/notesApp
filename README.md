@@ -356,9 +356,7 @@ E2e tests provision and tear down their own isolated users and orgs via the Supa
 
 ### Enabling e2e tests in CI
 
-The e2e CI job is gated by a repository variable so it doesn't run for forks or external PRs.
-
-**1. Add secrets** (GitHub → Settings → Secrets and variables → Actions → Secrets):
+Add these secrets in GitHub → Settings → Secrets and variables → Actions → **Secrets**:
 
 | Secret | Value |
 |---|---|
@@ -367,13 +365,7 @@ The e2e CI job is gated by a repository variable so it doesn't run for forks or 
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
 | `DATABASE_URL` | Postgres connection string (pooler) |
 
-**2. Enable the job** (GitHub → Settings → Secrets and variables → Actions → Variables):
-
-| Variable | Value |
-|---|---|
-| `E2E_ENABLED` | `true` |
-
-Once both are set, every push to `main` and every PR will run the full e2e suite.
+Once the secrets are set, every push to `main` and every PR will run the full e2e suite.
 
 ---
 
