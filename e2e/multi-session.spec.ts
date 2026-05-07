@@ -61,7 +61,7 @@ test("note created by user A is visible to user B after reload", async () => {
   const title = `Shared Org Note ${Date.now()}`;
   await pageA.getByPlaceholder("Sprint retro").fill(title);
   await pageA.locator("textarea[name=content]").fill("Visible to all org members.");
-  await pageA.locator("select[name=visibility]").selectOption("org");
+  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
   await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
@@ -75,7 +75,7 @@ test("private note created by user A is not visible to user B", async () => {
   const title = `Private Note ${Date.now()}`;
   await pageA.getByPlaceholder("Sprint retro").fill(title);
   await pageA.locator("textarea[name=content]").fill("Only author sees this.");
-  await pageA.locator("select[name=visibility]").selectOption("private");
+  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("private");
   await pageA.getByRole("button", { name: "Create note" }).click();
   await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
@@ -90,7 +90,7 @@ test("user B cannot delete a note authored by user A", async () => {
   const title = `Ownership Note ${Date.now()}`;
   await pageA.getByPlaceholder("Sprint retro").fill(title);
   await pageA.locator("textarea[name=content]").fill("This belongs to A.");
-  await pageA.locator("select[name=visibility]").selectOption("org");
+  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
   await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
@@ -109,7 +109,7 @@ test("concurrent edits — last write wins without corrupting versions", async (
   const title = `Concurrent Note ${Date.now()}`;
   await pageA.getByPlaceholder("Sprint retro").fill(title);
   await pageA.locator("textarea[name=content]").fill("Version 1 content.");
-  await pageA.locator("select[name=visibility]").selectOption("org");
+  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
   await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
 
@@ -149,7 +149,7 @@ test("two users see consistent state on shared note detail", async () => {
   const title = `Shared Detail Note ${Date.now()}`;
   await pageA.getByPlaceholder("Sprint retro").fill(title);
   await pageA.locator("textarea[name=content]").fill("Shared initial content.");
-  await pageA.locator("select[name=visibility]").selectOption("org");
+  await pageA.locator("form:has(textarea[name=content])").locator("select[name=visibility]").selectOption("org");
   await pageA.getByRole("button", { name: "Create note" }).click();
   await expect(pageA.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
   await pageA.getByRole("link", { name: title }).click();
