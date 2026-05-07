@@ -128,6 +128,25 @@ test("concurrent edits — last write wins without corrupting versions", async (
   expect(version).toBeGreaterThanOrEqual(2);
 });
 
+test("author changes visibility private→org; user B can now see note in list", async () => {
+  const title = `Visibility Change Note ${Date.now()}`;
+  const noteUrl = await createNote(pageA, org.id, title, "Initially private.", "private");
+
+  // User B should NOT see the private note
+  await pageB.goto(`/orgs/${org.id}/notes`);
+  await expect(pageB.getByRole("link", { name: title })).not.toBeVisible();
+
+  // User A is already on detail page — change visibility to org
+  await pageA.goto(noteUrl);
+  await pageA.locator("select[name=visibility]").selectOption("org");
+  await pageA.getByRole("button", { name: "Save changes" }).click();
+  await pageA.waitForURL(/\?message=/, { timeout: 10_000 });
+
+  // User B refreshes list — note should now be visible
+  await pageB.goto(`/orgs/${org.id}/notes`);
+  await expect(pageB.getByRole("link", { name: title })).toBeVisible({ timeout: 10_000 });
+});
+
 test("two users see consistent state on shared note detail", async () => {
   const title = `Shared Detail Note ${Date.now()}`;
   const noteUrl = await createNote(pageA, org.id, title, "Shared initial content.", "org");
