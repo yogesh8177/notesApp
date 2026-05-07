@@ -97,6 +97,74 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    # Requires repository secrets: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    # SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL.
+    # Gate via a repository variable so forks / external PRs skip this job gracefully.
+    # Set E2E_ENABLED = 'true' in Settings → Variables to enable.
+    if: vars.E2E_ENABLED == 'true'
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DATABASE_URL }}
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # AI keys not exercised by e2e tests; stub to satisfy env validation.
+      ANTHROPIC_API_KEY: sk-ant-placeholder
+      OPENAI_API_KEY: sk-placeholder
+      # Neo4j not exercised by e2e tests; stub to satisfy env validation.
+      NEO4J_URI: bolt://localhost:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: placeholder
+      CI: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Pin npm version
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build app
+        run: npm run build
+
+      - name: Run e2e tests
+        run: |
+          npm run start &
+          SERVER_PID=$!
+          npx wait-on http://localhost:3000 --timeout 30000
+          PLAYWRIGHT_NO_SERVER=1 npm run test:e2e
+          kill $SERVER_PID
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
   build:
     name: Build
     runs-on: ubuntu-latest
