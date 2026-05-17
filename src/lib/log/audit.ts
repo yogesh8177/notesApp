@@ -1,5 +1,6 @@
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { auditLog } from "@/lib/db/schema";
+import { auditLog, notes } from "@/lib/db/schema";
 import { log } from "@/lib/log";
 import { enqueueSync } from "@/lib/graph/queue";
 
@@ -37,9 +38,36 @@ export interface AuditEvent {
   userId?: string | null;
   resourceType?: string;
   resourceId?: string;
+  /**
+   * Optional repo identifier ("owner/repo") used to scope this event to a
+   * project for timeline / recall filtering. When omitted but resourceType
+   * is "note", we auto-resolve from notes.project_key.
+   */
+  projectKey?: string | null;
   metadata?: Record<string, unknown>;
   ip?: string | null;
   userAgent?: string | null;
+}
+
+/**
+ * Resolve project_key for a note-resource event when the caller didn't pass
+ * one. Best-effort: a failed lookup leaves project_key NULL on the audit row,
+ * which is fine — it just means the event won't appear in project-scoped
+ * timeline filters.
+ */
+async function resolveProjectKey(event: AuditEvent): Promise<string | null> {
+  if (event.projectKey !== undefined) return event.projectKey;
+  if (event.resourceType !== "note" || !event.resourceId) return null;
+  try {
+    const [row] = await db
+      .select({ projectKey: notes.projectKey })
+      .from(notes)
+      .where(eq(notes.id, event.resourceId))
+      .limit(1);
+    return row?.projectKey ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function audit(event: AuditEvent): Promise<void> {
@@ -57,6 +85,8 @@ export async function audit(event: AuditEvent): Promise<void> {
     event.action,
   );
 
+  const projectKey = await resolveProjectKey(event);
+
   // 2. persist row — best effort. Never let an audit failure block the
   // user's request, but DO surface it in logs for ops.
   try {
@@ -66,6 +96,7 @@ export async function audit(event: AuditEvent): Promise<void> {
       userId: event.userId ?? null,
       resourceType: event.resourceType ?? null,
       resourceId: event.resourceId ?? null,
+      projectKey,
       metadata: event.metadata ?? {},
       ip: event.ip ?? null,
       userAgent: event.userAgent ?? null,

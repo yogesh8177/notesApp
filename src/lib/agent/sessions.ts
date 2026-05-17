@@ -260,6 +260,7 @@ export async function bootstrap(
     userId,
     resourceType: "note",
     resourceId: noteId,
+    projectKey: input.repo,
     metadata: {
       tokenId: principal.tokenId,
       tokenName: principal.tokenName,
@@ -460,6 +461,7 @@ export async function checkpoint(
     userId,
     resourceType: "note",
     resourceId: sessionNoteId,
+    projectKey: input.repo,
     metadata: {
       tokenId: principal.tokenId,
       tokenName: principal.tokenName,
