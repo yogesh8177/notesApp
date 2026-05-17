@@ -12,7 +12,6 @@ import { describe, it, expect } from "vitest";
 import path from "node:path";
 
 // Use require so we pick up the CJS module without an extra build step.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { parseProjectKey } = require(
   path.resolve(__dirname, "../../../.claude/hooks/_lib.js"),
 );
