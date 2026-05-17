@@ -10,7 +10,7 @@
  * requirement. If the backend is down or the token is unset, the user's
  * prompt still reaches the model unmodified.
  */
-const { readStdin, api } = require("./_lib");
+const { readStdin, api, getProjectKey } = require("./_lib");
 
 const MAX_QUERY_LEN = 200;
 const TOP_K = 5;
@@ -42,8 +42,16 @@ function buildContext(results) {
 
   const q = prompt.slice(0, MAX_QUERY_LEN);
 
+  // Scope recall to the current project so cross-repo agents don't pollute
+  // each other's memory window. includeUnscoped=true keeps user-level memos
+  // (no projectKey) in scope. Null projectKey (e.g. outside any git repo)
+  // falls back to org-wide recall.
+  const projectKey = getProjectKey(input.cwd);
+
   try {
-    const response = await api("POST", "/agent/search", { q, limit: TOP_K });
+    const body = { q, limit: TOP_K, includeUnscoped: true };
+    if (projectKey) body.projectKey = projectKey;
+    const response = await api("POST", "/agent/search", body);
     const results = response?.data?.results ?? [];
     const additionalContext = buildContext(results);
     if (!additionalContext) return;

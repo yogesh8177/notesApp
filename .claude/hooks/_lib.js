@@ -93,7 +93,22 @@ function detectContext(cwd) {
   const agentId =
     process.env.AGENT_ID || `claude-code-${os.hostname()}-${os.userInfo().username}`;
   const repoUrl = normalizeRepoUrl(remote);
-  return { repo, branch, lastCommit, agentId, repoUrl };
+  // projectKey is the canonical scope identifier for cross-repo recall.
+  // null when we couldn't parse a remote (no git, weird URL) — server-side
+  // queries treat that as "org-wide" so behavior is graceful.
+  const projectKey = remote ? repo : null;
+  return { repo, branch, lastCommit, agentId, repoUrl, projectKey };
+}
+
+/**
+ * Standalone helper for callers that only need the project key (e.g. recall).
+ * Same parsing as detectContext() but cheaper if you don't need branch / commit.
+ */
+function getProjectKey(cwd) {
+  const remote = git("config --get remote.origin.url", cwd);
+  if (!remote) return null;
+  const m = remote.replace(/\.git$/, "").match(/[:/]([^/:]+\/[^/:]+)$/);
+  return m ? m[1] : null;
 }
 
 function readStdin() {
@@ -217,6 +232,7 @@ async function api(method, urlPath, body) {
 module.exports = {
   withLock,
   detectContext,
+  getProjectKey,
   readStdin,
   subagentContext,
   saveSession,

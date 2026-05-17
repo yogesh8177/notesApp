@@ -23,6 +23,8 @@ const requestSchema = z.object({
   q: z.string().trim().min(1).max(200),
   limit: z.number().int().min(1).max(20).default(5),
   tag: z.string().trim().min(1).max(64).optional(),
+  projectKey: z.string().trim().max(200).optional(),
+  includeUnscoped: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -61,6 +63,8 @@ export async function POST(request: Request) {
         visibility: "all",
         page: 1,
         pageSize: parsed.data.limit,
+        projectKey: parsed.data.projectKey,
+        includeUnscoped: parsed.data.includeUnscoped,
       },
       { orgId: auth.principal.orgId, userId: auth.principal.userId },
     );
@@ -70,12 +74,14 @@ export async function POST(request: Request) {
       orgId: auth.principal.orgId,
       userId: auth.principal.userId,
       resourceType: "search",
+      projectKey: parsed.data.projectKey,
       metadata: {
         tokenId: auth.principal.tokenId,
         tokenName: auth.principal.tokenName,
         qLength: parsed.data.q.length,
         resultCount: response.results.length,
         durationMs: Date.now() - startedAt,
+        projectKey: parsed.data.projectKey,
       },
       ip: meta.ip,
       userAgent: meta.userAgent,
