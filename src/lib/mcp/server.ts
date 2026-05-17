@@ -28,6 +28,9 @@ export function createMcpServer(principal: AgentPrincipal): McpServer {
         "list_agent_sessions (multi-agent coordination), get_org_timeline (situational awareness). " +
         "WRITES: create_note, update_note (replace content), append_to_note (safe additive write). " +
         "Prefer append_to_note over update_note for shared notes. " +
+        "Project scope: notes are tagged with a projectKey (e.g. 'owner/repo'). " +
+        "search_notes/list_recent_notes/get_org_timeline accept projectKey to scope results; " +
+        "call them with NO projectKey to search across all projects in this org. " +
         "Resources: notes://recent and notes://note/{noteId}.",
     },
   );
