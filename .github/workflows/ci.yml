@@ -132,16 +132,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The e2e suite runs against the shared Supabase database (it needs real
-      # auth/RLS/storage — see e2e/fixtures/db.ts). Apply outstanding migrations
-      # so the schema can't drift behind committed schema changes. migrate.ts
-      # tracks applied files in _migrations, so this is idempotent.
-      - name: Apply database migrations
-        run: npm run db:migrate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DATABASE_URL }}
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
