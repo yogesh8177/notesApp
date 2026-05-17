@@ -101,14 +101,47 @@ function detectContext(cwd) {
 }
 
 /**
+ * Pure-function parser for project keys. Exposed separately from getProjectKey
+ * so it can be unit-tested without spawning git. Returns null for any input
+ * that doesn't look like a remote URL ending in owner/repo[.git].
+ *
+ * Supported shapes:
+ *   - git@github.com:owner/repo.git          → "owner/repo"
+ *   - git@gitlab.com:owner/sub-group/repo    → "sub-group/repo"
+ *   - https://github.com/owner/repo.git      → "owner/repo"
+ *   - ssh://git@host/owner/repo              → "owner/repo"
+ *   - "" / null / nonsense                   → null
+ */
+function parseProjectKey(remoteUrl) {
+  if (!remoteUrl || typeof remoteUrl !== "string") return null;
+  const cleaned = remoteUrl.replace(/\.git$/, "").trim();
+  if (!cleaned) return null;
+  // Two URL families to handle:
+  //   - SSH:   user@host:path        (e.g. git@github.com:owner/repo)
+  //   - URL:   scheme://host/path    (https, http, ssh)
+  let urlPath;
+  const ssh = cleaned.match(/^[^\s@:/]+@[^\s:]+:(.+)$/);
+  if (ssh) {
+    urlPath = ssh[1];
+  } else {
+    const url = cleaned.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+(\/.+)$/i);
+    urlPath = url ? url[1] : null;
+  }
+  if (!urlPath) return null;
+  const parts = urlPath.replace(/^\/+/, "").split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  // Take the last two segments: works for `owner/repo` and for nested
+  // GitLab groups (`org/sub/repo` → `sub/repo`).
+  return parts.slice(-2).join("/");
+}
+
+/**
  * Standalone helper for callers that only need the project key (e.g. recall).
  * Same parsing as detectContext() but cheaper if you don't need branch / commit.
  */
 function getProjectKey(cwd) {
   const remote = git("config --get remote.origin.url", cwd);
-  if (!remote) return null;
-  const m = remote.replace(/\.git$/, "").match(/[:/]([^/:]+\/[^/:]+)$/);
-  return m ? m[1] : null;
+  return parseProjectKey(remote);
 }
 
 function readStdin() {
@@ -233,6 +266,7 @@ module.exports = {
   withLock,
   detectContext,
   getProjectKey,
+  parseProjectKey,
   readStdin,
   subagentContext,
   saveSession,
