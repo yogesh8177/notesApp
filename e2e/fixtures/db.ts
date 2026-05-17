@@ -105,11 +105,13 @@ export async function createTestNote(
   title: string,
   content: string,
   visibility = "org",
+  projectKey: string | null = null,
 ): Promise<TestNote> {
   const sql = getSql();
+  const projectKeySql = projectKey === null ? "NULL" : `'${projectKey.replace(/'/g, "''")}'`;
   const [note] = await sql.unsafe(
-    `INSERT INTO notes (org_id, author_id, title, content, visibility, current_version)
-     VALUES ('${orgId}', '${userId}', '${title.replace(/'/g, "''")}', '${content.replace(/'/g, "''")}', '${visibility}', 1)
+    `INSERT INTO notes (org_id, author_id, title, content, visibility, current_version, project_key)
+     VALUES ('${orgId}', '${userId}', '${title.replace(/'/g, "''")}', '${content.replace(/'/g, "''")}', '${visibility}', 1, ${projectKeySql})
      RETURNING id`,
   ) as Array<{ id: string }>;
   await sql.unsafe(
