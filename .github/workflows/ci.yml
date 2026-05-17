@@ -101,6 +101,22 @@ jobs:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     environment: production
+    # The app connects to Neo4j at runtime (graph sync), so e2e needs a live
+    # instance — env stubs alone cause connection failures. Postgres/Supabase
+    # still come from the production secrets below.
+    services:
+      neo4j:
+        image: neo4j:5
+        env:
+          NEO4J_AUTH: neo4j/testpassword
+        ports:
+          - 7687:7687
+          - 7474:7474
+        options: >-
+          --health-cmd "wget -qO- http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
     # Secrets are scoped to the "production" environment in GitHub settings.
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -112,10 +128,10 @@ jobs:
       # AI keys not exercised by e2e tests; stub to satisfy env validation.
       ANTHROPIC_API_KEY: sk-ant-placeholder
       OPENAI_API_KEY: sk-placeholder
-      # Neo4j not exercised by e2e tests; stub to satisfy env validation.
+      # Neo4j runs as a service container (see services.neo4j above).
       NEO4J_URI: bolt://localhost:7687
       NEO4J_USER: neo4j
-      NEO4J_PASSWORD: placeholder
+      NEO4J_PASSWORD: testpassword
       CI: true
 
     steps:
@@ -148,7 +164,7 @@ jobs:
           OPENAI_API_KEY: sk-placeholder
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
-          NEO4J_PASSWORD: placeholder
+          NEO4J_PASSWORD: testpassword
 
       - name: Copy static assets for standalone server
         run: |
@@ -175,7 +191,7 @@ jobs:
           OPENAI_API_KEY: sk-placeholder
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
-          NEO4J_PASSWORD: placeholder
+          NEO4J_PASSWORD: testpassword
 
       - name: Upload Playwright report
         if: always()
