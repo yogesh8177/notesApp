@@ -12,6 +12,10 @@ const searchBaseSchema = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  /** Scope to a specific project (e.g. "owner/repo"). Undefined = org-wide. */
+  projectKey: z.string().trim().max(200).optional(),
+  /** When projectKey is set, also include notes with no project. Default true (applied in searchNotes). */
+  includeUnscoped: z.coerce.boolean().optional(),
 });
 
 function validateDateRange(
@@ -95,6 +99,8 @@ function normalizeParams(source: SearchParamRecord | URLSearchParams, orgId: str
     to: read("to"),
     page: read("page"),
     pageSize: read("pageSize"),
+    projectKey: read("projectKey"),
+    includeUnscoped: read("includeUnscoped"),
   };
 }
 

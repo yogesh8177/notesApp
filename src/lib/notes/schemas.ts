@@ -12,6 +12,10 @@ export const notesListQuerySchema = z.object({
   // Cursor pagination. cursor = base64url(JSON { updatedAt, id }).
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
+  /** Scope to a specific project (e.g. "owner/repo"). Undefined = org-wide. */
+  projectKey: z.string().trim().max(200).optional(),
+  /** When projectKey is set, also include notes with no project. Default true (applied in listNotesForUser). */
+  includeUnscoped: z.boolean().optional(),
 });
 
 export const noteInputSchema = z.object({
@@ -21,6 +25,8 @@ export const noteInputSchema = z.object({
   visibility: z.enum(visibilityValues),
   tags: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
   changeSummary: z.string().trim().max(280).optional(),
+  /** Optional repo identifier; tags this note to a project. */
+  projectKey: z.string().trim().max(200).optional(),
 });
 
 export const noteCreateSchema = noteInputSchema;

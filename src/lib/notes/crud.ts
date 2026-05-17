@@ -135,6 +135,13 @@ export async function listNotesForUser(
       )
     : undefined;
 
+  const includeUnscoped = input.includeUnscoped ?? true;
+  const projectScope = input.projectKey
+    ? includeUnscoped
+      ? or(eq(notes.projectKey, input.projectKey), isNull(notes.projectKey))
+      : eq(notes.projectKey, input.projectKey)
+    : undefined;
+
   const filters = [
     eq(notes.orgId, orgId),
     isNull(notes.deletedAt),
@@ -143,6 +150,7 @@ export async function listNotesForUser(
     input.authorId ? eq(notes.authorId, input.authorId) : undefined,
     term ? or(ilike(notes.title, `%${term}%`), ilike(notes.content, `%${term}%`)) : undefined,
     normalizedTag ? eq(tags.name, normalizedTag) : undefined,
+    projectScope,
     cursorCondition,
   ].filter(Boolean);
 
@@ -273,6 +281,7 @@ export async function createNote(input: NoteCreateInput, userId: string) {
         content: input.content ?? "",
         visibility: input.visibility,
         currentVersion: 1,
+        projectKey: input.projectKey ?? null,
       })
       .returning({ id: notes.id, orgId: notes.orgId, title: notes.title, content: notes.content, visibility: notes.visibility });
 

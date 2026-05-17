@@ -1,6 +1,13 @@
-import { and, count, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentSessions, auditLog, notes, users } from "@/lib/db/schema";
+
+export interface TimelineFilter {
+  /** Scope to a specific project (e.g. "owner/repo"). Undefined = org-wide. */
+  projectKey?: string;
+  /** When projectKey is set, also include events with no project (default true). */
+  includeUnscoped?: boolean;
+}
 
 export interface TimelineEvent {
   id: number;
@@ -157,7 +164,18 @@ export async function getNoteToolCallCounts(
     .map((r) => ({ toolName: r.toolName, callCount: r.callCount }));
 }
 
-export async function getOrgTimeline(orgId: string, limit = 50): Promise<TimelineEvent[]> {
+export async function getOrgTimeline(
+  orgId: string,
+  limit = 50,
+  filter: TimelineFilter = {},
+): Promise<TimelineEvent[]> {
+  const includeUnscoped = filter.includeUnscoped ?? true;
+  const projectScope = filter.projectKey
+    ? includeUnscoped
+      ? or(eq(auditLog.projectKey, filter.projectKey), isNull(auditLog.projectKey))
+      : eq(auditLog.projectKey, filter.projectKey)
+    : undefined;
+
   const rows = await db
     .select({
       id: auditLog.id,
@@ -172,7 +190,7 @@ export async function getOrgTimeline(orgId: string, limit = 50): Promise<Timelin
     })
     .from(auditLog)
     .leftJoin(users, eq(users.id, auditLog.userId))
-    .where(eq(auditLog.orgId, orgId))
+    .where(and(eq(auditLog.orgId, orgId), projectScope))
     .orderBy(desc(auditLog.createdAt))
     .limit(limit);
 

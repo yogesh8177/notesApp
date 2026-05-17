@@ -99,6 +99,19 @@ function buildBaseConditions(input: SearchRequest, viewer: SearchViewer): SQL<un
       )`,
     );
   }
+  // Project scope: when projectKey is set, restrict to that project. Default
+  // includes unscoped notes (project_key IS NULL) so user-level memos still
+  // surface alongside project-tagged results.
+  if (input.projectKey) {
+    const includeUnscoped = input.includeUnscoped ?? true;
+    if (includeUnscoped) {
+      conditions.push(
+        sql`(${notes.projectKey} = ${input.projectKey} OR ${notes.projectKey} IS NULL)`,
+      );
+    } else {
+      conditions.push(eq(notes.projectKey, input.projectKey));
+    }
+  }
 
   return conditions;
 }

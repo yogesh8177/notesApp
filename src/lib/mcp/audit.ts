@@ -13,6 +13,8 @@ export async function withAudit<T>(opts: {
   principal: AgentPrincipal;
   kind: "tool" | "resource";
   name: string;
+  /** Optional project to stamp on the audit row (typically the tool's projectKey arg). */
+  projectKey?: string;
   meta?: Record<string, unknown>;
   run: () => Promise<T>;
 }): Promise<T> {
@@ -29,6 +31,7 @@ export async function withAudit<T>(opts: {
       userId: opts.principal.userId,
       resourceType: "mcp",
       resourceId: opts.name,
+      projectKey: opts.projectKey,
       metadata: {
         ...principalMeta,
         ...opts.meta,
@@ -43,6 +46,7 @@ export async function withAudit<T>(opts: {
       userId: opts.principal.userId,
       resourceType: "mcp",
       resourceId: opts.name,
+      projectKey: opts.projectKey,
       metadata: {
         ...principalMeta,
         ...opts.meta,

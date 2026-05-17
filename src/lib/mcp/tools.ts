@@ -91,6 +91,20 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
           .describe("ISO date YYYY-MM-DD. Updated-at upper bound."),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(50).default(20),
+        projectKey: z
+          .string()
+          .trim()
+          .max(200)
+          .optional()
+          .describe(
+            "Scope to a project (e.g. 'owner/repo'). Omit for cross-project recall.",
+          ),
+        includeUnscoped: z
+          .boolean()
+          .default(true)
+          .describe(
+            "When projectKey is set, also include notes with no project (user-level memos). Default true.",
+          ),
       },
     },
     async (args) =>
@@ -98,7 +112,8 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
         principal,
         kind: "tool",
         name: "search_notes",
-        meta: { hasQuery: Boolean(args.q), pageSize: args.pageSize },
+        projectKey: args.projectKey,
+        meta: { hasQuery: Boolean(args.q), pageSize: args.pageSize, projectKey: args.projectKey },
         run: async () => {
           try {
             const response = await searchNotes(
@@ -135,6 +150,16 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
         visibility: z.enum(VISIBILITY).optional(),
         cursor: z.string().optional(),
         limit: z.number().int().min(1).max(100).default(25),
+        projectKey: z
+          .string()
+          .trim()
+          .max(200)
+          .optional()
+          .describe("Scope to a project (e.g. 'owner/repo'). Omit for org-wide."),
+        includeUnscoped: z
+          .boolean()
+          .default(true)
+          .describe("When projectKey is set, also include notes with no project."),
       },
     },
     async (args) =>
@@ -142,7 +167,8 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
         principal,
         kind: "tool",
         name: "list_recent_notes",
-        meta: { limit: args.limit },
+        projectKey: args.projectKey,
+        meta: { limit: args.limit, projectKey: args.projectKey },
         run: async () => {
           try {
             const result = await listNotesForUser(
@@ -308,6 +334,14 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
         visibility: z.enum(VISIBILITY).default("org"),
         tags: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
         changeSummary: z.string().trim().max(280).optional(),
+        projectKey: z
+          .string()
+          .trim()
+          .max(200)
+          .optional()
+          .describe(
+            "Optional repo identifier (e.g. 'owner/repo'). Tags this note to a project so it surfaces only in that project's recall.",
+          ),
       },
       annotations: {
         readOnlyHint: false,
@@ -319,7 +353,8 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
         principal,
         kind: "tool",
         name: "create_note",
-        meta: { titleLength: args.title.length, contentLength: args.content.length },
+        projectKey: args.projectKey,
+        meta: { titleLength: args.title.length, contentLength: args.content.length, projectKey: args.projectKey },
         run: async () => {
           try {
             const note = await createNote(
@@ -468,16 +503,23 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
         "Useful for multi-agent coordination: see what other agents are working on, then use get_note to read their session note.",
       inputSchema: {
         limit: z.number().int().min(1).max(50).default(20),
+        projectKey: z
+          .string()
+          .trim()
+          .max(200)
+          .optional()
+          .describe("Scope to a specific repo (e.g. 'owner/repo'). Omit for all projects."),
       },
     },
-    async ({ limit }) =>
+    async ({ limit, projectKey }) =>
       withAudit({
         principal,
         kind: "tool",
         name: "list_agent_sessions",
-        meta: { limit },
+        projectKey,
+        meta: { limit, projectKey },
         run: async () => {
-          const sessions = await listAgentSessions(principal.orgId, limit);
+          const sessions = await listAgentSessions(principal.orgId, limit, { projectKey });
           return textToolResult({ count: sessions.length, sessions });
         },
       }),
@@ -594,16 +636,27 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
         "Useful for situational awareness: 'what happened in this org recently?'",
       inputSchema: {
         limit: z.number().int().min(1).max(100).default(50),
+        projectKey: z
+          .string()
+          .trim()
+          .max(200)
+          .optional()
+          .describe("Scope to a project (e.g. 'owner/repo'). Omit for org-wide."),
+        includeUnscoped: z
+          .boolean()
+          .default(true)
+          .describe("When projectKey is set, also include events with no project."),
       },
     },
-    async ({ limit }) =>
+    async ({ limit, projectKey, includeUnscoped }) =>
       withAudit({
         principal,
         kind: "tool",
         name: "get_org_timeline",
-        meta: { limit },
+        projectKey,
+        meta: { limit, projectKey },
         run: async () => {
-          const events = await getOrgTimeline(principal.orgId, limit);
+          const events = await getOrgTimeline(principal.orgId, limit, { projectKey, includeUnscoped });
           return textToolResult({
             count: events.length,
             events: events.map((e) => ({

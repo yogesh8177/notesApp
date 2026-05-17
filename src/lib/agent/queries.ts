@@ -1,7 +1,12 @@
-import { count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { agentSessions, auditLog, conversationTurns, noteVersions, notes } from "@/lib/db/schema";
 import { db } from "@/lib/db/client";
 import { sessionEpochSummaries } from "@/lib/db/schema";
+
+export interface ListAgentSessionsOptions {
+  /** Scope to a specific project (e.g. "owner/repo"). Undefined = org-wide. */
+  projectKey?: string;
+}
 
 export interface EpochSummary {
   id: string;
@@ -22,7 +27,11 @@ export interface AgentSessionRow {
   lastSeenAt: Date;
 }
 
-export async function listAgentSessions(orgId: string, limit = 20): Promise<AgentSessionRow[]> {
+export async function listAgentSessions(
+  orgId: string,
+  limit = 20,
+  options: ListAgentSessionsOptions = {},
+): Promise<AgentSessionRow[]> {
   const rows = await db
     .select({
       id: agentSessions.id,
@@ -36,7 +45,14 @@ export async function listAgentSessions(orgId: string, limit = 20): Promise<Agen
     })
     .from(agentSessions)
     .innerJoin(notes, eq(notes.id, agentSessions.noteId))
-    .where(eq(agentSessions.orgId, orgId))
+    .where(
+      and(
+        eq(agentSessions.orgId, orgId),
+        // agentSessions.repo is the canonical project key for a session.
+        // No includeUnscoped — a session always belongs to exactly one repo.
+        options.projectKey ? eq(agentSessions.repo, options.projectKey) : undefined,
+      ),
+    )
     .orderBy(desc(agentSessions.lastSeenAt))
     .limit(limit);
   return rows;
