@@ -225,6 +225,7 @@ export async function bootstrap(
         content: initialContent,
         visibility: "org",
         currentVersion: 1,
+        projectKey: input.repo,
       })
       .returning({ id: notes.id });
 
