@@ -104,16 +104,19 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
   const syncedAt = new Date().toISOString();
 
   await session.executeWrite(async (tx) => {
-    // Note node
+    // Note node — projectKey carried as a property so Cypher queries can
+    // partition the graph by project without joining back to Postgres.
     await tx.run(
       `MERGE (n:Note {id: $id})
        SET n.orgId = $orgId, n.title = $title, n.visibility = $visibility,
            n.currentVersion = $currentVersion, n.createdAt = $createdAt,
-           n.updatedAt = $updatedAt, n.syncedAt = $syncedAt`,
+           n.updatedAt = $updatedAt, n.projectKey = $projectKey, n.syncedAt = $syncedAt`,
       {
         id: note.id, orgId: note.orgId, title: note.title, visibility: note.visibility,
         currentVersion: note.currentVersion, createdAt: note.createdAt.toISOString(),
-        updatedAt: note.updatedAt.toISOString(), syncedAt,
+        updatedAt: note.updatedAt.toISOString(),
+        projectKey: note.projectKey ?? null,
+        syncedAt,
       }
     );
 
@@ -179,17 +182,21 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
       );
     }
 
-    // Agent sessions — batched with UNWIND
+    // Agent sessions — batched with UNWIND. projectKey duplicates s.repo so
+    // queries that match across node labels (Note + AgentSession + AuditEvent)
+    // can filter on a single property name.
     if (sessions.length > 0) {
       await tx.run(
         `UNWIND $sessions AS s
          MERGE (a:AgentSession {id: s.id})
          SET a.orgId = s.orgId, a.noteId = s.noteId, a.agentId = s.agentId,
-             a.repo = s.repo, a.branch = s.branch, a.createdAt = s.createdAt, a.syncedAt = $syncedAt`,
+             a.repo = s.repo, a.branch = s.branch, a.projectKey = s.projectKey,
+             a.createdAt = s.createdAt, a.syncedAt = $syncedAt`,
         {
           sessions: sessions.map((s) => ({
             id: s.id, orgId: s.orgId, noteId: s.noteId, agentId: s.agentId,
-            repo: s.repo, branch: s.branch, createdAt: s.createdAt.toISOString(),
+            repo: s.repo, branch: s.branch, projectKey: s.repo,
+            createdAt: s.createdAt.toISOString(),
           })),
           syncedAt,
         }
@@ -202,17 +209,20 @@ async function syncNote(session: Neo4jSession, noteId: string, orgId: string): P
       );
     }
 
-    // Audit events — batched with UNWIND
+    // Audit events — batched with UNWIND. projectKey is sourced from the
+    // denormalized audit_log column (filled in by the audit() resolver).
     if (auditEvents.length > 0) {
       await tx.run(
         `UNWIND $events AS e
          MERGE (ae:AuditEvent {id: e.id})
          SET ae.orgId = e.orgId, ae.action = e.action, ae.resourceType = e.resourceType,
-             ae.resourceId = e.resourceId, ae.createdAt = e.createdAt, ae.syncedAt = $syncedAt`,
+             ae.resourceId = e.resourceId, ae.projectKey = e.projectKey,
+             ae.createdAt = e.createdAt, ae.syncedAt = $syncedAt`,
         {
           events: auditEvents.map((e) => ({
             id: String(e.id), orgId: e.orgId ?? orgId, action: e.action,
             resourceType: e.resourceType ?? "", resourceId: e.resourceId ?? "",
+            projectKey: e.projectKey ?? null,
             createdAt: e.createdAt.toISOString(),
           })),
           syncedAt,
@@ -259,10 +269,12 @@ async function syncAgentSession(session: Neo4jSession, sessionId: string, orgId:
     await tx.run(
       `MERGE (a:AgentSession {id: $id})
        SET a.orgId = $orgId, a.noteId = $noteId, a.agentId = $agentId,
-           a.repo = $repo, a.branch = $branch, a.createdAt = $createdAt, a.syncedAt = $syncedAt`,
+           a.repo = $repo, a.branch = $branch, a.projectKey = $projectKey,
+           a.createdAt = $createdAt, a.syncedAt = $syncedAt`,
       {
         id: s.id, orgId: s.orgId, noteId: s.noteId, agentId: s.agentId,
-        repo: s.repo, branch: s.branch, createdAt: s.createdAt.toISOString(), syncedAt,
+        repo: s.repo, branch: s.branch, projectKey: s.repo,
+        createdAt: s.createdAt.toISOString(), syncedAt,
       }
     );
 
@@ -271,11 +283,13 @@ async function syncAgentSession(session: Neo4jSession, sessionId: string, orgId:
         `MERGE (n:Note {id: $id})
          SET n.orgId = $orgId, n.title = $title, n.visibility = $visibility,
              n.currentVersion = $currentVersion, n.createdAt = $createdAt,
-             n.updatedAt = $updatedAt, n.syncedAt = $syncedAt`,
+             n.updatedAt = $updatedAt, n.projectKey = $projectKey, n.syncedAt = $syncedAt`,
         {
           id: sessionNote.id, orgId: sessionNote.orgId, title: sessionNote.title,
           visibility: sessionNote.visibility, currentVersion: sessionNote.currentVersion,
-          createdAt: sessionNote.createdAt.toISOString(), updatedAt: sessionNote.updatedAt.toISOString(), syncedAt,
+          createdAt: sessionNote.createdAt.toISOString(), updatedAt: sessionNote.updatedAt.toISOString(),
+          projectKey: sessionNote.projectKey ?? null,
+          syncedAt,
         }
       );
       await tx.run(
@@ -440,10 +454,12 @@ async function syncAuditEvent(session: Neo4jSession, eventIdStr: string, orgId: 
     await tx.run(
       `MERGE (ae:AuditEvent {id: $id})
        SET ae.orgId = $orgId, ae.action = $action, ae.resourceType = $resourceType,
-           ae.resourceId = $resourceId, ae.createdAt = $createdAt, ae.syncedAt = $syncedAt`,
+           ae.resourceId = $resourceId, ae.projectKey = $projectKey,
+           ae.createdAt = $createdAt, ae.syncedAt = $syncedAt`,
       {
         id: String(event.id), orgId: event.orgId ?? orgId, action: event.action,
         resourceType: event.resourceType ?? "", resourceId: event.resourceId ?? "",
+        projectKey: event.projectKey ?? null,
         createdAt: event.createdAt.toISOString(), syncedAt,
       }
     );
@@ -465,11 +481,13 @@ async function syncAuditEvent(session: Neo4jSession, eventIdStr: string, orgId: 
         `MERGE (n:Note {id: $id})
          SET n.orgId = $orgId, n.title = $title, n.visibility = $visibility,
              n.currentVersion = $currentVersion, n.createdAt = $createdAt,
-             n.updatedAt = $updatedAt, n.syncedAt = $syncedAt`,
+             n.updatedAt = $updatedAt, n.projectKey = $projectKey, n.syncedAt = $syncedAt`,
         {
           id: relatedNote.id, orgId: relatedNote.orgId, title: relatedNote.title,
           visibility: relatedNote.visibility, currentVersion: relatedNote.currentVersion,
-          createdAt: relatedNote.createdAt.toISOString(), updatedAt: relatedNote.updatedAt.toISOString(), syncedAt,
+          createdAt: relatedNote.createdAt.toISOString(), updatedAt: relatedNote.updatedAt.toISOString(),
+          projectKey: relatedNote.projectKey ?? null,
+          syncedAt,
         }
       );
       await tx.run(

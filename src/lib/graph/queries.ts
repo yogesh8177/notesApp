@@ -261,27 +261,43 @@ export interface GraphHotspot {
  * Used at bootstrap to inject "knowledge hotspots" — notes agents rely on most.
  * Returns [] gracefully when Neo4j is unavailable.
  */
-export async function getBootstrapGraphContext(orgId: string): Promise<GraphHotspot[]> {
+export async function getBootstrapGraphContext(
+  orgId: string,
+  projectKey?: string | null,
+): Promise<GraphHotspot[]> {
   const driver = getDriver();
   if (!driver) return [];
 
   const session = driver.session();
   try {
-    const result = await session.run(
-      `MATCH (ct:ConversationTurn {orgId: $orgId})-[:REFERENCES]->(n:Note {orgId: $orgId})
-       WITH n, count(ct) AS refCount
-       WHERE refCount >= $minRefs
-       RETURN n.id AS id, n.title AS title, refCount
-       ORDER BY refCount DESC LIMIT 5`,
-      { orgId, minRefs: neo4j.int(3) },
-    );
+    // When projectKey is provided, restrict hotspots to that project plus
+    // unscoped notes (n.projectKey IS NULL). This keeps cross-repo agents
+    // from polluting each other's bootstrap context.
+    const result = projectKey
+      ? await session.run(
+          `MATCH (ct:ConversationTurn {orgId: $orgId})-[:REFERENCES]->(n:Note {orgId: $orgId})
+           WHERE n.projectKey = $projectKey OR n.projectKey IS NULL
+           WITH n, count(ct) AS refCount
+           WHERE refCount >= $minRefs
+           RETURN n.id AS id, n.title AS title, refCount
+           ORDER BY refCount DESC LIMIT 5`,
+          { orgId, projectKey, minRefs: neo4j.int(3) },
+        )
+      : await session.run(
+          `MATCH (ct:ConversationTurn {orgId: $orgId})-[:REFERENCES]->(n:Note {orgId: $orgId})
+           WITH n, count(ct) AS refCount
+           WHERE refCount >= $minRefs
+           RETURN n.id AS id, n.title AS title, refCount
+           ORDER BY refCount DESC LIMIT 5`,
+          { orgId, minRefs: neo4j.int(3) },
+        );
     return result.records.map((r) => ({
       id: r.get("id") as string,
       title: r.get("title") as string,
       refCount: Number(r.get("refCount")),
     }));
   } catch (err) {
-    log.warn({ err, orgId }, "graph.bootstrap.context.failed");
+    log.warn({ err, orgId, projectKey }, "graph.bootstrap.context.failed");
     return [];
   } finally {
     await session.close();

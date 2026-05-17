@@ -289,7 +289,9 @@ export async function bootstrap(
       skipCheckpoint ? Promise.resolve([]) : loadEpochSummaries(noteId),
       skipCheckpoint ? Promise.resolve([]) : loadTailTurns(noteId),
       isColdStart ? loadProjectNotes(orgId) : Promise.resolve([]),
-      isColdStart ? getBootstrapGraphContext(orgId) : Promise.resolve([]),
+      // Scope graph hotspots to the current repo: the agent only cares about
+      // notes relevant to this project (plus user-level unscoped notes).
+      isColdStart ? getBootstrapGraphContext(orgId, input.repo) : Promise.resolve([]),
     ]);
 
   return {
