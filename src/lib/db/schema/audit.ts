@@ -33,12 +33,23 @@ export const auditLog = pgTable(
     metadata: jsonb("metadata").default(sql`'{}'::jsonb`),
     ip: text("ip"),
     userAgent: text("user_agent"),
+    /**
+     * Optional repo identifier denormalized from the source note (or the
+     * caller's git context for note-less events like search.execute).
+     * Enables project-scoped timeline filtering without joins.
+     */
+    projectKey: text("project_key"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
   },
   (t) => ({
     orgCreatedIdx: index("audit_log_org_created_idx").on(t.orgId, t.createdAt),
+    orgProjectCreatedIdx: index("audit_log_org_project_created_idx").on(
+      t.orgId,
+      t.projectKey,
+      t.createdAt,
+    ),
     actionIdx: index("audit_log_action_idx").on(t.action),
     userCreatedIdx: index("audit_log_user_created_idx").on(t.userId, t.createdAt),
     resourceIdx: index("audit_log_resource_idx").on(t.resourceType, t.resourceId),

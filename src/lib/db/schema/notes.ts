@@ -41,6 +41,12 @@ export const notes = pgTable(
     currentVersion: integer("current_version").notNull().default(1),
     /** GENERATED column — read-only from app code. */
     searchVector: tsvector("search_vector"),
+    /**
+     * Optional repo identifier (e.g. "owner/repo") used to scope agent
+     * recall/search to the current project. Null = not bound to a project
+     * (user-level memos, web-UI notes).
+     */
+    projectKey: text("project_key"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -52,6 +58,11 @@ export const notes = pgTable(
   (t) => ({
     orgIdx: index("notes_org_idx").on(t.orgId),
     orgUpdatedIdx: index("notes_org_updated_idx").on(t.orgId, t.updatedAt),
+    orgProjectUpdatedIdx: index("notes_org_project_updated_idx").on(
+      t.orgId,
+      t.projectKey,
+      t.updatedAt,
+    ),
     authorIdx: index("notes_author_idx").on(t.authorId),
     // search_vector GIN + pg_trgm indexes are created in the SQL migration
     // (drizzle-kit can't express the operator class on tsvector / gin_trgm_ops)
