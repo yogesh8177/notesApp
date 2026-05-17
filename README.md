@@ -36,11 +36,18 @@ Run the following **in each project directory** where you want Claude Code to us
 # 4. Sign in at http://localhost:3000, create an org, and generate a token:
 #    Org Settings → Agent Tokens → New token  (nat_… shown only once)
 
-# 5. Wire Claude Code hooks + MCP into this project (prompts for the token above)
+# 5. (Optional but recommended) Create a note titled exactly "Agent Guidelines"
+#    in this org. Notes → New note → title "Agent Guidelines".
+#    The bootstrap hook reads this note's body and injects it as system
+#    context at the start of every Claude Code session — use it for coding
+#    standards, review rules, or anything the agent should follow. Update
+#    the note any time; the next session picks up the change automatically.
+
+# 6. Wire Claude Code hooks + MCP into this project (prompts for the token above)
 npx collab-memory hooks-setup
 ```
 
-> **One org = one isolated workspace.** Create a separate org (and token) per project to keep session memory scoped. Re-run `hooks-setup` at any time to rotate a token or reconfigure the app URL.
+> **One org = many isolated projects.** Memory inside an org is scoped per project (auto-derived from the git remote): recall stays project-local by default, with cross-project search a single tool-call away (`search_notes` with no `projectKey`). Notes you write through the web UI are unscoped and surface in every project — good for user-level memos. Re-run `hooks-setup` at any time to rotate a token or reconfigure the app URL.
 
 | Command | What it does |
 |---|---|
