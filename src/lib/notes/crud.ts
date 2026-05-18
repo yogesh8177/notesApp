@@ -101,7 +101,13 @@ function decodeCursor(cursor: string): NotesCursor | null {
 export async function listNotesForUser(
   input: NotesListQuery,
   userId: string,
-): Promise<{ notes: NoteListItem[]; nextCursor: string | null; members: OrgMemberOption[]; availableTags: string[] }> {
+): Promise<{
+  notes: NoteListItem[];
+  nextCursor: string | null;
+  members: OrgMemberOption[];
+  availableTags: string[];
+  availableProjects: string[];
+}> {
   const { orgId } = input;
   const membership = await requireMemberRole(orgId, userId, "viewer").catch(() => null);
   if (!membership) {
@@ -183,11 +189,16 @@ export async function listNotesForUser(
   const nextCursor = hasMore && lastRow ? encodeCursor(lastRow.updatedAt, lastRow.id) : null;
 
   const noteIds = page.map((r) => r.id);
-  const [tagMap, shareCountMap, members, tagRows] = await Promise.all([
+  const [tagMap, shareCountMap, members, tagRows, projectRows] = await Promise.all([
     loadTagsForNotes(noteIds),
     loadShareCounts(noteIds),
     listOrgMembers(orgId),
     db.select({ name: tags.name }).from(tags).where(eq(tags.orgId, orgId)).orderBy(tags.name),
+    db
+      .selectDistinct({ projectKey: notes.projectKey })
+      .from(notes)
+      .where(and(eq(notes.orgId, orgId), isNull(notes.deletedAt)))
+      .orderBy(notes.projectKey),
   ]);
 
   return {
@@ -208,6 +219,9 @@ export async function listNotesForUser(
     nextCursor,
     members,
     availableTags: tagRows.map((r) => r.name),
+    availableProjects: projectRows
+      .map((r) => r.projectKey)
+      .filter((p): p is string => p !== null),
   };
 }
 

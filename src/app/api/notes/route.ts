@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     visibility: url.searchParams.get("visibility") ?? undefined,
     authorId: url.searchParams.get("authorId") ?? undefined,
     tag: url.searchParams.get("tag") ?? undefined,
+    projectKey: url.searchParams.get("projectKey") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
     limit: url.searchParams.get("limit") ?? undefined,
   });

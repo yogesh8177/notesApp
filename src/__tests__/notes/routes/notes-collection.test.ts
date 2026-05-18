@@ -53,7 +53,7 @@ function postReq(body: unknown) {
 }
 
 const STUB_LIST = {
-  notes: [], nextCursor: null, members: [], availableTags: [],
+  notes: [], nextCursor: null, members: [], availableTags: [], availableProjects: [],
 };
 
 const STUB_NOTE = {

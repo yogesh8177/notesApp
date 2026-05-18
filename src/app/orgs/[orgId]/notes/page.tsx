@@ -31,6 +31,7 @@ export default async function NotesPage({
     visibility: first(query.visibility) || undefined,
     authorId: first(query.authorId) || undefined,
     tag: first(query.tag) || undefined,
+    projectKey: first(query.projectKey) || undefined,
   });
 
   const data = await listNotesForUser(parsed.success ? parsed.data : { orgId, limit: 25 }, user.id);
@@ -57,7 +58,7 @@ export default async function NotesPage({
           <CardDescription>Search within notes you can currently read in this organisation.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-3">
+          <form className="grid gap-3 md:grid-cols-4">
             <input type="hidden" name="orgId" value={orgId} />
             <select
               name="visibility"
@@ -93,7 +94,19 @@ export default async function NotesPage({
                 </option>
               ))}
             </select>
-            <div className="md:col-span-3 flex items-center gap-3">
+            <select
+              name="projectKey"
+              defaultValue={first(query.projectKey) ?? ""}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">All projects</option>
+              {data.availableProjects.map((project) => (
+                <option key={project} value={project}>
+                  {project}
+                </option>
+              ))}
+            </select>
+            <div className="md:col-span-4 flex items-center gap-3">
               <Button type="submit">Apply filters</Button>
               <Button variant="ghost" asChild>
                 <Link href={`/orgs/${orgId}/notes`}>Reset</Link>
@@ -147,6 +160,7 @@ export default async function NotesPage({
           visibility: first(query.visibility),
           authorId: first(query.authorId),
           tag: first(query.tag),
+          projectKey: first(query.projectKey),
         }}
       />
     </div>

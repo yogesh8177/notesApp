@@ -19,6 +19,7 @@ interface Props {
     visibility?: string;
     authorId?: string;
     tag?: string;
+    projectKey?: string;
   };
 }
 
@@ -44,6 +45,7 @@ export function NotesList({ orgId, initialNotes, initialNextCursor, query }: Pro
     if (query.visibility) params.set("visibility", query.visibility);
     if (query.authorId) params.set("authorId", query.authorId);
     if (query.tag) params.set("tag", query.tag);
+    if (query.projectKey) params.set("projectKey", query.projectKey);
 
     const res = await fetch(`/api/notes?${params.toString()}`, { cache: "no-store" });
     const payload = (await res.json()) as ApiResponse;
