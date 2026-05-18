@@ -553,17 +553,31 @@ export function registerTools(server: McpServer, principal: AgentPrincipal): voi
           .array(z.string().trim().min(1).max(500))
           .max(20)
           .optional()
-          .describe("Architectural decisions made this turn. Written into the session note's Decisions section."),
+          .describe(
+            "Architectural decisions made THIS TURN. Appended (deduped) to the " +
+              "session note's Decisions section, which is a cumulative log — list " +
+              "only new decisions, never re-list past ones.",
+          ),
         next: z
           .array(z.string().trim().min(1).max(500))
           .max(20)
           .optional()
-          .describe("Next steps identified this turn. Written into the session note's Next section."),
+          .describe(
+            "The COMPLETE set of next steps still open right now — restate every " +
+              "still-open item on each call, not just new ones. This REPLACES the " +
+              "session note's Next section, so any open item omitted here is dropped. " +
+              "Omit the field or pass [] to leave Next unchanged.",
+          ),
         issues: z
           .array(z.string().trim().min(1).max(500))
           .max(20)
           .optional()
-          .describe("Bugs or issues found this turn. Written into the session note's Issues section."),
+          .describe(
+            "The COMPLETE set of issues still unresolved right now — restate every " +
+              "open issue on each call, not just newly-found ones. This REPLACES the " +
+              "session note's Issues section, so any issue omitted here is dropped. " +
+              "Omit the field or pass [] to leave Issues unchanged.",
+          ),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
