@@ -398,13 +398,17 @@ export async function checkpoint(
       return { kind: "error" as const, error: "FORBIDDEN" as const };
     }
 
-    // Carry forward any Decisions/Next/Issues written directly to the note
-    // (e.g. via log_turn) that haven't been included in input from the local accumulator.
+    // Decisions are a cumulative log — every decision ever recorded is carried
+    // forward (deduped). Next/Issues are a *snapshot* of currently-open work:
+    // a non-empty input restates the open set and replaces the section, so
+    // items the agent has since finished drop off instead of accumulating
+    // forever. An empty input means "nothing to update" — the existing
+    // section is preserved so log_turn-written items survive this checkpoint.
     const mergedInput: CheckpointInput = {
       ...input,
       decisions: [...new Set([...extractListSection(note.content, "Decisions"), ...input.decisions])],
-      next: [...new Set([...extractListSection(note.content, "Next"), ...input.next])],
-      issues: [...new Set([...extractListSection(note.content, "Issues"), ...input.issues])],
+      next: input.next.length ? input.next : extractListSection(note.content, "Next"),
+      issues: input.issues.length ? input.issues : extractListSection(note.content, "Issues"),
     };
     const body = renderCheckpoint(mergedInput);
 
@@ -544,9 +548,11 @@ async function maybeCompactEpoch(
 
 /**
  * Write decisions and/or next-steps directly into the session note content.
- * Called by log_turn when the agent provides these fields. The items are merged
- * into the existing ### Decisions / ### Next sections so they survive the next
- * checkpoint (checkpoint() reads and carries them forward before overwriting).
+ * Called by log_turn when the agent provides these fields.
+ *
+ * Decisions accumulate into the existing ### Decisions section (cumulative
+ * log). Next/Issues are treated as a snapshot — a non-empty list replaces the
+ * section so completed items drop off; an empty list leaves it unchanged.
  */
 export async function mergePendingItems(
   orgId: string,
@@ -566,21 +572,20 @@ export async function mergePendingItems(
 
     if (!note || note.orgId !== orgId) return;
 
-    const merged = [...new Set([...extractListSection(note.content, "Decisions"), ...decisions])];
-    const mergedNext = [...new Set([...extractListSection(note.content, "Next"), ...next])];
-    const mergedIssues = [...new Set([...extractListSection(note.content, "Issues"), ...issues])];
-
-    if (!merged.length && !mergedNext.length && !mergedIssues.length) return;
+    // Decisions accumulate (cumulative log). Next/Issues are a snapshot: a
+    // non-empty list is the agent restating its current open set, so it
+    // replaces the section rather than unioning — finished items drop off.
+    const mergedDecisions = [...new Set([...extractListSection(note.content, "Decisions"), ...decisions])];
 
     let updated = note.content;
-    if (merged.length) updated = setListSection(updated, "Decisions", merged);
-    if (mergedNext.length) updated = setListSection(updated, "Next", mergedNext);
-    if (mergedIssues.length) updated = setListSection(updated, "Issues", mergedIssues);
+    if (decisions.length) updated = setListSection(updated, "Decisions", mergedDecisions);
+    if (next.length) updated = setListSection(updated, "Next", next);
+    if (issues.length) updated = setListSection(updated, "Issues", issues);
     if (updated === note.content) return;
 
     // Update content only — no currentVersion bump and no noteVersions row.
-    // checkpoint() reads this content and carries Decisions/Next forward when
-    // it writes the next real version, keeping version history clean.
+    // checkpoint() folds this content into the next real version, keeping
+    // version history clean.
     await tx
       .update(notes)
       .set({ content: updated, updatedAt: new Date() })
