@@ -54,6 +54,7 @@ export async function createNoteAction(orgId: string, formData: FormData) {
     visibility: formData.get("visibility"),
     tags: tagsFromValue(formData.get("tags")),
     changeSummary: formData.get("changeSummary"),
+    projectKey: formData.get("projectKey") || undefined,
   });
 
   if (!parsed.success) {

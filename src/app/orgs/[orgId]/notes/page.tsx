@@ -144,6 +144,17 @@ export default async function NotesPage({
                 <Input name="tags" placeholder="roadmap, planning, retro" />
                 <Input name="changeSummary" placeholder="Initial version summary" />
               </div>
+              <Input
+                name="projectKey"
+                list="create-note-projects"
+                maxLength={200}
+                placeholder="Project (owner/repo) — optional"
+              />
+              <datalist id="create-note-projects">
+                {data.availableProjects.map((project) => (
+                  <option key={project} value={project} />
+                ))}
+              </datalist>
               <div>
                 <SubmitButton pendingText="Creating…">Create note</SubmitButton>
               </div>
