@@ -247,3 +247,16 @@ export async function getOrgTimeline(
     };
   });
 }
+
+/** Distinct project keys present on this org's audit events, for the timeline filter. */
+export async function listTimelineProjects(orgId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ projectKey: auditLog.projectKey })
+    .from(auditLog)
+    .where(eq(auditLog.orgId, orgId))
+    .orderBy(auditLog.projectKey);
+
+  return rows
+    .map((r) => r.projectKey)
+    .filter((p): p is string => p !== null);
+}

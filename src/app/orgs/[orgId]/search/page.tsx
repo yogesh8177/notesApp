@@ -6,6 +6,7 @@ import { requireOrgRole } from "@/lib/auth/org";
 import {
   hasActiveSearchFilters,
   listSearchAuthors,
+  listSearchProjects,
   listSearchTags,
   parseSearchRequest,
   safeParseSearchFilters,
@@ -21,6 +22,7 @@ function buildSearchHref(
     visibility?: string;
     authorId?: string;
     tag?: string;
+    projectKey?: string;
     from?: string;
     to?: string;
     pageSize?: number;
@@ -33,6 +35,7 @@ function buildSearchHref(
   if (current.visibility && current.visibility !== "all") params.set("visibility", current.visibility);
   if (current.authorId) params.set("authorId", current.authorId);
   if (current.tag) params.set("tag", current.tag);
+  if (current.projectKey) params.set("projectKey", current.projectKey);
   if (current.from) params.set("from", current.from);
   if (current.to) params.set("to", current.to);
   if (current.pageSize && current.pageSize !== 20) params.set("pageSize", String(current.pageSize));
@@ -61,9 +64,10 @@ export default async function SearchPage({
   const rawSearchParams = await searchParams;
   const { data: filters, error: filterError } = safeParseSearchFilters(rawSearchParams, orgId);
 
-  const [authors, availableTags] = await Promise.all([
+  const [authors, availableTags, availableProjects] = await Promise.all([
     listSearchAuthors(orgId),
     listSearchTags(orgId),
+    listSearchProjects(orgId),
   ]);
 
   const shouldSearch = hasActiveSearchFilters(filters);
@@ -162,6 +166,25 @@ export default async function SearchPage({
               <datalist id="search-tag-options">
                 {availableTags.map((tag) => (
                   <option key={tag.value} value={tag.value} />
+                ))}
+              </datalist>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="projectKey">
+                Project
+              </label>
+              <Input
+                defaultValue={filters.projectKey ?? ""}
+                id="projectKey"
+                list="search-project-options"
+                maxLength={200}
+                name="projectKey"
+                placeholder="owner/repo"
+              />
+              <datalist id="search-project-options">
+                {availableProjects.map((project) => (
+                  <option key={project.value} value={project.value} />
                 ))}
               </datalist>
             </div>
@@ -266,6 +289,7 @@ export default async function SearchPage({
                 visibility: response.query.visibility,
                 ...(response.query.authorId ? { authorId: response.query.authorId } : {}),
                 ...(response.query.tag ? { tag: response.query.tag } : {}),
+                ...(response.query.projectKey ? { projectKey: response.query.projectKey } : {}),
                 ...(response.query.from ? { from: response.query.from } : {}),
                 ...(response.query.to ? { to: response.query.to } : {}),
                 page: String(response.page),

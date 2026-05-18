@@ -158,6 +158,18 @@ export async function listSearchTags(orgId: string): Promise<SearchFacetOption[]
     .orderBy(asc(tags.name));
 }
 
+export async function listSearchProjects(orgId: string): Promise<SearchFacetOption[]> {
+  const rows = await db
+    .selectDistinct({ projectKey: notes.projectKey })
+    .from(notes)
+    .where(and(eq(notes.orgId, orgId), isNull(notes.deletedAt)))
+    .orderBy(asc(notes.projectKey));
+
+  return rows
+    .filter((r): r is { projectKey: string } => r.projectKey !== null)
+    .map((r) => ({ value: r.projectKey, label: r.projectKey }));
+}
+
 /**
  * Full-text (tsvector) + pg_trgm fallback query.
  * Ranked by: ts_rank_cd * 0.75 + title/content similarity * 0.2 + tag similarity * 0.05.
@@ -460,7 +472,9 @@ export async function searchNotes(
 
 export { type SearchFacetOption };
 export function hasActiveSearchFilters(
-  input: Partial<Pick<SearchRequest, "q" | "visibility" | "authorId" | "tag" | "from" | "to">>,
+  input: Partial<
+    Pick<SearchRequest, "q" | "visibility" | "authorId" | "tag" | "from" | "to" | "projectKey">
+  >,
 ) {
   return Boolean(
     input.q ||
@@ -468,6 +482,7 @@ export function hasActiveSearchFilters(
       input.authorId ||
       input.tag ||
       input.from ||
-      input.to,
+      input.to ||
+      input.projectKey,
   );
 }

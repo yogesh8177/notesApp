@@ -26,9 +26,10 @@ import {
   AlertCircle,
   GitGraph,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
-import { getOrgTimeline, type TimelineEvent } from "@/lib/timeline/queries";
+import { getOrgTimeline, listTimelineProjects, type TimelineEvent } from "@/lib/timeline/queries";
 import { cn } from "@/lib/utils";
 import { GraphPreview } from "@/components/graph/graph-preview";
 
@@ -368,30 +369,22 @@ function TimelineItem({
 
 export default async function TimelinePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orgId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { orgId } = await params;
   await requireUser(`/orgs/${orgId}/timeline`);
 
-  const events = await getOrgTimeline(orgId, 100);
+  const query = await searchParams;
+  const rawProject = Array.isArray(query.projectKey) ? query.projectKey[0] : query.projectKey;
+  const projectKey = rawProject?.trim() ? rawProject.trim() : undefined;
 
-  if (events.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Timeline</h1>
-          <p className="text-sm text-muted-foreground">Activity log for this organisation.</p>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>No activity yet</CardTitle>
-            <CardDescription>Events will appear here as your team works in this organisation.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
+  const [events, availableProjects] = await Promise.all([
+    getOrgTimeline(orgId, 100, { projectKey }),
+    listTimelineProjects(orgId),
+  ]);
 
   // Group events by day
   const groups: Array<{ date: Date; events: TimelineEvent[] }> = [];
@@ -409,31 +402,71 @@ export default async function TimelinePage({
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Timeline</h1>
         <p className="text-sm text-muted-foreground">
-          Recent activity in this organisation — last {events.length} events.
+          {projectKey
+            ? `Activity scoped to ${projectKey} — ${events.length} events.`
+            : `Recent activity in this organisation — last ${events.length} events.`}
         </p>
       </div>
 
-      <div className="space-y-8">
-        {groups.map((group) => (
-          <div key={group.date.toISOString()}>
-            <div className="mb-4 flex items-center gap-3">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-xs font-medium text-muted-foreground">{formatDate(group.date)}</span>
-              <div className="h-px flex-1 bg-border" />
+      {availableProjects.length > 0 ? (
+        <form className="flex flex-wrap items-end gap-3" action={`/orgs/${orgId}/timeline`}>
+          <select
+            name="projectKey"
+            defaultValue={projectKey ?? ""}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">All projects</option>
+            {availableProjects.map((project) => (
+              <option key={project} value={project}>
+                {project}
+              </option>
+            ))}
+          </select>
+          <Button type="submit" size="sm">
+            Filter
+          </Button>
+          {projectKey ? (
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/orgs/${orgId}/timeline`}>Reset</Link>
+            </Button>
+          ) : null}
+        </form>
+      ) : null}
+
+      {events.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No activity yet</CardTitle>
+            <CardDescription>
+              {projectKey
+                ? "No events match this project filter."
+                : "Events will appear here as your team works in this organisation."}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {groups.map((group) => (
+            <div key={group.date.toISOString()}>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs font-medium text-muted-foreground">{formatDate(group.date)}</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              <div>
+                {group.events.map((event, idx) => (
+                  <TimelineItem
+                    key={event.id}
+                    event={event}
+                    orgId={orgId}
+                    isLast={idx === group.events.length - 1}
+                  />
+                ))}
+              </div>
             </div>
-            <div>
-              {group.events.map((event, idx) => (
-                <TimelineItem
-                  key={event.id}
-                  event={event}
-                  orgId={orgId}
-                  isLast={idx === group.events.length - 1}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
