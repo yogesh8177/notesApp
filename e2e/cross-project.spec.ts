@@ -74,7 +74,7 @@ test.afterAll(async () => {
 test("recall: no projectKey returns notes from every project + unscoped", async ({ request }) => {
   const res = await request.post("/agent/search", {
     headers: { Authorization: `Bearer ${agentToken}` },
-    data: { q: "alpha beta gamma", limit: 50 },
+    data: { q: "alpha beta gamma", limit: 20 },
   });
   expect(res.ok()).toBe(true);
   const body = await res.json();
@@ -87,7 +87,7 @@ test("recall: no projectKey returns notes from every project + unscoped", async 
 test("recall: projectKey=A returns project A + unscoped, never B (boundary)", async ({ request }) => {
   const res = await request.post("/agent/search", {
     headers: { Authorization: `Bearer ${agentToken}` },
-    data: { q: "alpha beta gamma", limit: 50, projectKey: PROJECT_A, includeUnscoped: true },
+    data: { q: "alpha beta gamma", limit: 20, projectKey: PROJECT_A, includeUnscoped: true },
   });
   expect(res.ok()).toBe(true);
   const body = await res.json();
@@ -100,7 +100,7 @@ test("recall: projectKey=A returns project A + unscoped, never B (boundary)", as
 test("recall: projectKey=B returns project B + unscoped, never A (boundary, reverse)", async ({ request }) => {
   const res = await request.post("/agent/search", {
     headers: { Authorization: `Bearer ${agentToken}` },
-    data: { q: "alpha beta gamma", limit: 50, projectKey: PROJECT_B, includeUnscoped: true },
+    data: { q: "alpha beta gamma", limit: 20, projectKey: PROJECT_B, includeUnscoped: true },
   });
   expect(res.ok()).toBe(true);
   const body = await res.json();
@@ -113,7 +113,7 @@ test("recall: projectKey=B returns project B + unscoped, never A (boundary, reve
 test("recall: projectKey=A + includeUnscoped=false excludes unscoped (strict mode)", async ({ request }) => {
   const res = await request.post("/agent/search", {
     headers: { Authorization: `Bearer ${agentToken}` },
-    data: { q: "alpha beta gamma", limit: 50, projectKey: PROJECT_A, includeUnscoped: false },
+    data: { q: "alpha beta gamma", limit: 20, projectKey: PROJECT_A, includeUnscoped: false },
   });
   expect(res.ok()).toBe(true);
   const body = await res.json();
@@ -126,7 +126,7 @@ test("recall: projectKey=A + includeUnscoped=false excludes unscoped (strict mod
 test("recall: unknown projectKey returns only unscoped (default includeUnscoped)", async ({ request }) => {
   const res = await request.post("/agent/search", {
     headers: { Authorization: `Bearer ${agentToken}` },
-    data: { q: "alpha beta gamma", limit: 50, projectKey: "nonexistent-org/nonexistent-repo" },
+    data: { q: "alpha beta gamma", limit: 20, projectKey: "nonexistent-org/nonexistent-repo" },
   });
   expect(res.ok()).toBe(true);
   const body = await res.json();

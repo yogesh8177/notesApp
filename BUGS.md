@@ -402,3 +402,11 @@ core feature, perf cliff) · **MED** (UX bug, minor edge case) · **LOW**
 **What:** Script sorted and ran every `.sql` file in `drizzle/` unconditionally. Early files (0000) create enum types without IF NOT EXISTS, so the second run crashes immediately. Later files use IF NOT EXISTS on tables but not on indexes, so they also fail partway through.
 **Why bad:** `npx notes-app migrate` (and any CI re-run) fails hard, making the project non-bootstrappable.
 **Fix commit:** ed38ada — added `_migrations` tracking table; script now skips already-applied files and seeds the table for existing installs.
+
+## [MED] cross-project e2e spec sends limit=50, exceeding /agent/search max of 20
+
+**Where:** `e2e/cross-project.spec.ts:77,90,103,116,129` (request `data` payloads)
+**Found by:** orchestrator (Playwright trace — HTTP 422 on every POST)
+**What:** All 5 tests POST `{ limit: 50 }` to `/agent/search`. The route's zod schema (`src/app/agent/search/route.ts:24`) caps `limit` at `.max(20)`, so every request was rejected with `422 VALIDATION` before any query ran. `expect(res.ok()).toBe(true)` failed on the first assertion of each test.
+**Why bad:** A brand-new spec (commit 9129266) that never passed in CI; failure masqueraded as DB/schema drift and sent diagnosis down the wrong path.
+**Fix commit:** changed `limit: 50` → `limit: 20` in all 5 tests (3 notes seeded, so 20 is ample). Endpoint cap left intact — it is a deliberate contract.
